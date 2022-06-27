@@ -65,27 +65,35 @@ export interface FitToOptions {
 export interface CameraControlsEventMap {
     update: {
         type: 'update';
+        target: any;
     };
     wake: {
         type: 'wake';
+        target: any;
     };
     rest: {
         type: 'rest';
+        target: any;
     };
     sleep: {
         type: 'sleep';
+        target: any;
     };
     transitionstart: {
         type: 'transitionstart';
+        target: any;
     };
     controlstart: {
         type: 'controlstart';
+        target: any;
     };
     control: {
         type: 'control';
+        target: any;
     };
     controlend: {
         type: 'controlend';
+        target: any;
     };
 }
 export declare function isPerspectiveCamera(camera: _THREE.Camera): camera is _THREE.PerspectiveCamera;

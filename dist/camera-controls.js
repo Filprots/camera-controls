@@ -359,6 +359,7 @@
 	        this._viewport = null;
 	        this._dollyControlAmount = 0;
 	        this._hasRested = true;
+	        this._hasSlept = true;
 	        this._boundaryEnclosesCamera = false;
 	        this._needsUpdate = true;
 	        this._updatedLastTime = false;
@@ -979,6 +980,14 @@
 	        return !this._hasRested;
 	    }
 	    /**
+	     * Returns `true` if the controls are awake at all.
+	     * readonly value.
+	     * @category Properties
+	     */
+	    get awake() {
+	        return !this._hasSlept;
+	    }
+	    /**
 	     * Getter for the current `ACTION`.
 	     * readonly value.
 	     * @category Properties
@@ -1231,13 +1240,19 @@
 	     * Limits set with .minZoom and .maxZoom
 	     * @param zoom
 	     * @param enableTransition
+	     * @param silent
 	     * @category Methods
 	     */
-	    zoomTo(zoom, enableTransition = false) {
+	    zoomTo(zoom, enableTransition = false, silent = false) {
 	        this._zoomEnd = THREE.MathUtils.clamp(zoom, this.minZoom, this.maxZoom);
 	        this._needsUpdate = true;
 	        if (!enableTransition) {
 	            this._zoom = this._zoomEnd;
+	        }
+	        // Instant and silent
+	        if (silent) {
+	            this.update(1, true);
+	            return Promise.resolve();
 	        }
 	        const resolveImmediately = !enableTransition || approxEquals(this._zoom, this._zoomEnd, this.restThreshold);
 	        return this._createOnRestPromise(resolveImmediately);
@@ -1420,9 +1435,10 @@
 	     * @param targetY
 	     * @param targetZ
 	     * @param enableTransition
+	     * @param silent
 	     * @category Methods
 	     */
-	    setLookAt(positionX, positionY, positionZ, targetX, targetY, targetZ, enableTransition = false) {
+	    setLookAt(positionX, positionY, positionZ, targetX, targetY, targetZ, enableTransition = false, silent = false) {
 	        const target = _v3B.set(targetX, targetY, targetZ);
 	        const position = _v3A.set(positionX, positionY, positionZ);
 	        this._targetEnd.copy(target);
@@ -1432,6 +1448,11 @@
 	        if (!enableTransition) {
 	            this._target.copy(this._targetEnd);
 	            this._spherical.copy(this._sphericalEnd);
+	        }
+	        // Instant and silent
+	        if (silent) {
+	            this.update(1, true);
+	            return Promise.resolve();
 	        }
 	        const resolveImmediately = !enableTransition ||
 	            approxEquals(this._target.x, this._targetEnd.x, this.restThreshold) &&
@@ -1493,10 +1514,11 @@
 	     * @param positionY
 	     * @param positionZ
 	     * @param enableTransition
+	     * @param silent
 	     * @category Methods
 	     */
-	    setPosition(positionX, positionY, positionZ, enableTransition = false) {
-	        return this.setLookAt(positionX, positionY, positionZ, this._targetEnd.x, this._targetEnd.y, this._targetEnd.z, enableTransition);
+	    setPosition(positionX, positionY, positionZ, enableTransition = false, silent = false) {
+	        return this.setLookAt(positionX, positionY, positionZ, this._targetEnd.x, this._targetEnd.y, this._targetEnd.z, enableTransition, silent);
 	    }
 	    /**
 	     * setLookAt without position, Stay still at the position.
@@ -1504,11 +1526,12 @@
 	     * @param targetY
 	     * @param targetZ
 	     * @param enableTransition
+	     * @param silent
 	     * @category Methods
 	     */
-	    setTarget(targetX, targetY, targetZ, enableTransition = false) {
+	    setTarget(targetX, targetY, targetZ, enableTransition = false, silent = false) {
 	        const pos = this.getPosition(_v3A);
-	        return this.setLookAt(pos.x, pos.y, pos.z, targetX, targetY, targetZ, enableTransition);
+	        return this.setLookAt(pos.x, pos.y, pos.z, targetX, targetY, targetZ, enableTransition, silent);
 	    }
 	    /**
 	     * Set focal offset using the screen parallel coordinates. z doesn't affect in Orthographic as with Dolly.
@@ -1695,10 +1718,11 @@
 	     * Update camera position and directions.
 	     * This should be called in your tick loop every time, and returns true if re-rendering is needed.
 	     * @param delta
+	     * @param silent
 	     * @returns updated
 	     * @category Methods
 	     */
-	    update(delta) {
+	    update(delta, silent = false) {
 	        const dampingFactor = this._state === ACTION.NONE ? this.dampingFactor : this.draggingDampingFactor;
 	        // The original THREE.OrbitControls assume 60 FPS fixed and does NOT rely on delta time.
 	        // (that must be a problem of the original one though)
@@ -1793,9 +1817,16 @@
 	            this._updateNearPlaneCorners();
 	            this._needsUpdate = true;
 	        }
+	        // We need no events dispatching
+	        if (silent) {
+	            this._updatedLastTime = false;
+	            this._needsUpdate = false;
+	            return false;
+	        }
 	        const updated = this._needsUpdate;
 	        if (updated && !this._updatedLastTime) {
 	            this._hasRested = false;
+	            this._hasSlept = false;
 	            this.dispatchEvent({ type: 'wake' });
 	            this.dispatchEvent({ type: 'update' });
 	        }
@@ -1817,6 +1848,7 @@
 	            }
 	        }
 	        else if (!updated && this._updatedLastTime) {
+	            this._hasSlept = true;
 	            this.dispatchEvent({ type: 'sleep' });
 	        }
 	        this._updatedLastTime = updated;

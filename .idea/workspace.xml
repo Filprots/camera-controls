@@ -2,18 +2,15 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d0d6d355-54d1-40b6-9300-aa4e1d840bb5" name="Changes" comment="Change package json">
-      <change afterPath="$PROJECT_DIR$/.idea/camera-controls.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dist/CameraControls.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/dist/CameraControls.d.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dist/camera-controls.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dist/camera-controls.min.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.min.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dist/camera-controls.module.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.module.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dist/types.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/dist/types.d.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/CameraControls.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/CameraControls.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/types.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,7 +55,7 @@
       <updated>1656342562564</updated>
       <workItem from="1656342563629" duration="2208000" />
       <workItem from="1656352078664" duration="3000" />
-      <workItem from="1656353009677" duration="2129000" />
+      <workItem from="1656353009677" duration="6249000" />
     </task>
     <task id="LOCAL-00001" summary="Change package json">
       <created>1656354421504</created>
@@ -67,7 +64,14 @@
       <option name="project" value="LOCAL" />
       <updated>1656354421504</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Change package json and .idea folder">
+      <created>1656355153299</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1656355153299</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -88,7 +92,8 @@
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
     <option name="CHECK_NEW_TODO" value="false" />
     <MESSAGE value="Change package json" />
-    <option name="LAST_COMMIT_MESSAGE" value="Change package json" />
+    <MESSAGE value="Change package json and .idea folder" />
+    <option name="LAST_COMMIT_MESSAGE" value="Change package json and .idea folder" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

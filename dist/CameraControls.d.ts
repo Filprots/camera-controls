@@ -265,6 +265,7 @@ export declare class CameraControls extends EventDispatcher {
         _THREE.Vector3
     ];
     protected _hasRested: boolean;
+    protected _hasSlept: boolean;
     protected _boundary: _THREE.Box3;
     protected _boundaryEnclosesCamera: boolean;
     protected _needsUpdate: boolean;
@@ -306,6 +307,12 @@ export declare class CameraControls extends EventDispatcher {
     * @category Properties
     */
     readonly active: boolean;
+    /*
+    * Returns `true` if the controls are awake at all.
+    * readonly value.
+    * @category Properties
+    */
+    readonly awake: boolean;
     /*
     * Getter for the current `ACTION`.
     * readonly value.
@@ -469,9 +476,10 @@ export declare class CameraControls extends EventDispatcher {
      * Limits set with .minZoom and .maxZoom
      * @param zoom
      * @param enableTransition
+     * @param silent
      * @category Methods
      */
-    zoomTo(zoom: number, enableTransition?: boolean): Promise<void>;
+    zoomTo(zoom: number, enableTransition?: boolean, silent?: boolean): Promise<void>;
     /**
      * @deprecated `pan()` has been renamed to `truck()`
      * @category Methods
@@ -531,9 +539,10 @@ export declare class CameraControls extends EventDispatcher {
      * @param targetY
      * @param targetZ
      * @param enableTransition
+     * @param silent
      * @category Methods
      */
-    setLookAt(positionX: number, positionY: number, positionZ: number, targetX: number, targetY: number, targetZ: number, enableTransition?: boolean): Promise<void>;
+    setLookAt(positionX: number, positionY: number, positionZ: number, targetX: number, targetY: number, targetZ: number, enableTransition?: boolean, silent?: boolean): Promise<void>;
     /**
      * Similar to setLookAt, but it interpolates between two states.
      * @param positionAX
@@ -559,18 +568,20 @@ export declare class CameraControls extends EventDispatcher {
      * @param positionY
      * @param positionZ
      * @param enableTransition
+     * @param silent
      * @category Methods
      */
-    setPosition(positionX: number, positionY: number, positionZ: number, enableTransition?: boolean): Promise<void>;
+    setPosition(positionX: number, positionY: number, positionZ: number, enableTransition?: boolean, silent?: boolean): Promise<void>;
     /**
      * setLookAt without position, Stay still at the position.
      * @param targetX
      * @param targetY
      * @param targetZ
      * @param enableTransition
+     * @param silent
      * @category Methods
      */
-    setTarget(targetX: number, targetY: number, targetZ: number, enableTransition?: boolean): Promise<void>;
+    setTarget(targetX: number, targetY: number, targetZ: number, enableTransition?: boolean, silent?: boolean): Promise<void>;
     /**
      * Set focal offset using the screen parallel coordinates. z doesn't affect in Orthographic as with Dolly.
      * @param x
@@ -664,10 +675,11 @@ export declare class CameraControls extends EventDispatcher {
      * Update camera position and directions.
      * This should be called in your tick loop every time, and returns true if re-rendering is needed.
      * @param delta
+     * @param silent
      * @returns updated
      * @category Methods
      */
-    update(delta: number): boolean;
+    update(delta: number, silent?: boolean): boolean;
     /**
      * Get all state in JSON string
      * @category Methods

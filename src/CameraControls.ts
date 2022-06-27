@@ -140,8 +140,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Minimum vertical angle in radians.  
-	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.  
+	 * Minimum vertical angle in radians.
+	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.
 	 * The default value is `0`.
 	 *
 	 * e.g.
@@ -153,8 +153,8 @@ export class CameraControls extends EventDispatcher {
 	minPolarAngle = 0; // radians
 
 	/**
-	 * Maximum vertical angle in radians.  
-	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.  
+	 * Maximum vertical angle in radians.
+	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.
 	 * The default value is `Math.PI`.
 	 *
 	 * e.g.
@@ -166,8 +166,8 @@ export class CameraControls extends EventDispatcher {
 	maxPolarAngle = Math.PI; // radians
 
 	/**
-	 * Minimum horizontal angle in radians.  
-	 * The angle has to be less than `.maxAzimuthAngle`.  
+	 * Minimum horizontal angle in radians.
+	 * The angle has to be less than `.maxAzimuthAngle`.
 	 * The default value is `- Infinity`.
 	 *
 	 * e.g.
@@ -179,8 +179,8 @@ export class CameraControls extends EventDispatcher {
 	minAzimuthAngle = - Infinity; // radians
 
 	/**
-	 * Maximum horizontal angle in radians.  
-	 * The angle has to be greater than `.minAzimuthAngle`.  
+	 * Maximum horizontal angle in radians.
+	 * The angle has to be greater than `.minAzimuthAngle`.
 	 * The default value is `Infinity`.
 	 *
 	 * e.g.
@@ -193,19 +193,19 @@ export class CameraControls extends EventDispatcher {
 
 	// How far you can dolly in and out ( PerspectiveCamera only )
 	/**
-	 * Minimum distance for dolly. The value must be higher than `0`.  
+	 * Minimum distance for dolly. The value must be higher than `0`.
 	 * PerspectiveCamera only.
 	 * @category Properties
 	 */
 	minDistance = 0;
 	/**
-	 * Maximum distance for dolly. The value must be higher than `minDistance`.  
+	 * Maximum distance for dolly. The value must be higher than `minDistance`.
 	 * PerspectiveCamera only.
 	 * @category Properties
 	 */
 	maxDistance = Infinity;
 	/**
-	 * `true` to enable Infinity Dolly.  
+	 * `true` to enable Infinity Dolly.
 	 * When the Dolly distance is less than the `minDistance`, radius of the sphere will be set `minDistance` automatically.
 	 * @category Properties
 	 */
@@ -223,15 +223,15 @@ export class CameraControls extends EventDispatcher {
 	maxZoom = Infinity;
 
 	/**
-	 * The damping inertia.  
-	 * The value must be between `Math.EPSILON` to `1` inclusive.  
+	 * The damping inertia.
+	 * The value must be between `Math.EPSILON` to `1` inclusive.
 	 * Setting `1` to disable smooth transitions.
 	 * @category Properties
 	 */
 	dampingFactor = 0.05;
 	/**
-	 * The damping inertia while dragging.  
-	 * The value must be between `Math.EPSILON` to `1` inclusive.  
+	 * The damping inertia while dragging.
+	 * The value must be between `Math.EPSILON` to `1` inclusive.
 	 * Setting `1` to disable smooth transitions.
 	 * @category Properties
 	 */
@@ -284,7 +284,7 @@ export class CameraControls extends EventDispatcher {
 	restThreshold = 0.01;
 
 	/**
-	 * An array of Meshes to collide with camera.  
+	 * An array of Meshes to collide with camera.
 	 * Be aware colliderMeshes may decrease performance. The collision test uses 4 raycasters from the camera since the near plane has 4 corners.
 	 * @category Properties
 	 */
@@ -371,6 +371,7 @@ export class CameraControls extends EventDispatcher {
 	protected _nearPlaneCorners: [ _THREE.Vector3, _THREE.Vector3, _THREE.Vector3, _THREE.Vector3 ];
 
 	protected _hasRested = true;
+	protected _hasSlept = true;
 
 	protected _boundary: _THREE.Box3;
 	protected _boundaryEnclosesCamera = false;
@@ -1081,7 +1082,7 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Whether or not the controls are enabled.  
+	 * Whether or not the controls are enabled.
 	 * `false` to disable user dragging/touch-move, but all methods works.
 	 * @category Properties
 	 */
@@ -1112,7 +1113,7 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Returns `true` if the controls are active updating.  
+	 * Returns `true` if the controls are active updating.
 	 * readonly value.
 	 * @category Properties
 	 */
@@ -1123,7 +1124,18 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Getter for the current `ACTION`.  
+     * Returns `true` if the controls are awake at all.
+     * readonly value.
+     * @category Properties
+     */
+	get awake(): boolean {
+
+		return ! this._hasSlept;
+
+	}
+
+	/**
+	 * Getter for the current `ACTION`.
 	 * readonly value.
 	 * @category Properties
 	 */
@@ -1158,7 +1170,7 @@ export class CameraControls extends EventDispatcher {
 
 	// horizontal angle
 	/**
-	 * get/set the azimuth angle (horizontal) in radians.  
+	 * get/set the azimuth angle (horizontal) in radians.
 	 * Every 360 degrees turn is added to `.azimuthAngle` value, which is accumulative.
 	 * @category Properties
 	 */
@@ -1336,7 +1348,7 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Rotate azimuthal angle(horizontal) and polar angle(vertical) to the given angle.  
+	 * Rotate azimuthal angle(horizontal) and polar angle(vertical) to the given angle.
 	 * Camera view will rotate over the orbit pivot absolutely:
 	 *
 	 * azimuthAngle
@@ -1469,9 +1481,10 @@ export class CameraControls extends EventDispatcher {
 	 * Limits set with .minZoom and .maxZoom
 	 * @param zoom
 	 * @param enableTransition
+	 * @param silent
 	 * @category Methods
 	 */
-	zoomTo( zoom: number, enableTransition: boolean = false ): Promise<void> {
+	zoomTo( zoom: number, enableTransition: boolean = false, silent: boolean = false  ): Promise<void> {
 
 		this._zoomEnd = THREE.MathUtils.clamp( zoom, this.minZoom, this.maxZoom );
 		this._needsUpdate = true;
@@ -1479,6 +1492,14 @@ export class CameraControls extends EventDispatcher {
 		if ( ! enableTransition ) {
 
 			this._zoom = this._zoomEnd;
+
+		}
+
+		// Instant and silent
+		if ( silent ) {
+
+			this.update( 1, true );
+			return Promise.resolve();
 
 		}
 
@@ -1733,12 +1754,14 @@ export class CameraControls extends EventDispatcher {
 	 * @param targetY
 	 * @param targetZ
 	 * @param enableTransition
+	 * @param silent
 	 * @category Methods
 	 */
 	setLookAt(
 		positionX: number, positionY: number, positionZ: number,
 		targetX: number, targetY: number, targetZ: number,
 		enableTransition: boolean = false,
+		silent: boolean = false
 	): Promise<void> {
 
 		const target = _v3B.set( targetX, targetY, targetZ );
@@ -1754,6 +1777,14 @@ export class CameraControls extends EventDispatcher {
 
 			this._target.copy( this._targetEnd );
 			this._spherical.copy( this._sphericalEnd );
+
+		}
+
+		// Instant and silent
+		if ( silent ) {
+
+			this.update( 1, true );
+			return Promise.resolve();
 
 		}
 
@@ -1843,14 +1874,16 @@ export class CameraControls extends EventDispatcher {
 	 * @param positionY
 	 * @param positionZ
 	 * @param enableTransition
+	 * @param silent
 	 * @category Methods
 	 */
-	setPosition( positionX: number, positionY: number, positionZ: number, enableTransition: boolean = false ): Promise<void> {
+	setPosition( positionX: number, positionY: number, positionZ: number, enableTransition: boolean = false, silent: boolean = false ): Promise<void> {
 
 		return this.setLookAt(
 			positionX, positionY, positionZ,
 			this._targetEnd.x, this._targetEnd.y, this._targetEnd.z,
 			enableTransition,
+			silent,
 		);
 
 	}
@@ -1861,15 +1894,17 @@ export class CameraControls extends EventDispatcher {
 	 * @param targetY
 	 * @param targetZ
 	 * @param enableTransition
+	 * @param silent
 	 * @category Methods
 	 */
-	setTarget( targetX: number, targetY: number, targetZ: number, enableTransition: boolean = false ): Promise<void> {
+	setTarget( targetX: number, targetY: number, targetZ: number, enableTransition: boolean = false, silent: boolean = false ): Promise<void> {
 
 		const pos = this.getPosition( _v3A );
 		return this.setLookAt(
 			pos.x, pos.y, pos.z,
 			targetX, targetY, targetZ,
 			enableTransition,
+			silent,
 		);
 
 	}
@@ -2112,7 +2147,7 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Sync camera-up direction.  
+	 * Sync camera-up direction.
 	 * When camera-up vector is changed, `.updateCameraUp()` must be called.
 	 * @category Methods
 	 */
@@ -2124,13 +2159,14 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Update camera position and directions.  
+	 * Update camera position and directions.
 	 * This should be called in your tick loop every time, and returns true if re-rendering is needed.
 	 * @param delta
+	 * @param silent
 	 * @returns updated
 	 * @category Methods
 	 */
-	update( delta: number ): boolean {
+	update( delta: number, silent: boolean = false ): boolean {
 
 		const dampingFactor = this._state === ACTION.NONE ? this.dampingFactor : this.draggingDampingFactor;
 		// The original THREE.OrbitControls assume 60 FPS fixed and does NOT rely on delta time.
@@ -2274,11 +2310,21 @@ export class CameraControls extends EventDispatcher {
 
 		}
 
+		// We need no events dispatching
+		if ( silent ) {
+
+			this._updatedLastTime = false;
+			this._needsUpdate = false;
+			return false;
+
+		}
+
 		const updated = this._needsUpdate;
 
 		if ( updated && ! this._updatedLastTime ) {
 
 			this._hasRested = false;
+			this._hasSlept = false;
 			this.dispatchEvent( { type: 'wake' } );
 			this.dispatchEvent( { type: 'update' } );
 
@@ -2307,6 +2353,7 @@ export class CameraControls extends EventDispatcher {
 
 		} else if ( ! updated && this._updatedLastTime ) {
 
+			this._hasSlept = true;
 			this.dispatchEvent( { type: 'sleep' } );
 
 		}
