@@ -14,7 +14,6 @@ export declare class CameraControls extends EventDispatcher {
      *
      * ```js
      * import {
-     * 	MOUSE,
      * 	Vector2,
      * 	Vector3,
      * 	Vector4,
@@ -28,7 +27,6 @@ export declare class CameraControls extends EventDispatcher {
      * } from 'three';
      *
      * const subsetOfTHREE = {
-     * 	MOUSE     : MOUSE,
      * 	Vector2   : Vector2,
      * 	Vector3   : Vector3,
      * 	Vector4   : Vector4,
@@ -203,7 +201,6 @@ export declare class CameraControls extends EventDispatcher {
      * | --------------------- | -------- |
      * | `mouseButtons.left`   | `CameraControls.ACTION.ROTATE`* \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
      * | `mouseButtons.right`  | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK`* \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
-     * | `mouseButtons.shiftLeft`   | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE`* |
      * | `mouseButtons.wheel` ¹ | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
      * | `mouseButtons.middle` ² | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY`* \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
      *
@@ -511,18 +508,18 @@ export declare class CameraControls extends EventDispatcher {
     moveTo(x: number, y: number, z: number, enableTransition?: boolean): Promise<void>;
     /**
      * Fit the viewport to the box or the bounding box of the object, using the nearest axis. paddings are in unit.
-     *
+     * set `cover: true` to fill enter screen.
      * e.g.
      * ```
      * cameraControls.fitToBox( myMesh );
      * ```
      * @param box3OrObject Axis aligned bounding box to fit the view.
      * @param enableTransition Whether to move smoothly or immediately.
-     * @param options | `<object>` { paddingTop: number, paddingLeft: number, paddingBottom: number, paddingRight: number }
+     * @param options | `<object>` { cover: boolean, paddingTop: number, paddingLeft: number, paddingBottom: number, paddingRight: number }
      * @returns Transition end promise
      * @category Methods
      */
-    fitToBox(box3OrObject: _THREE.Box3 | _THREE.Object3D, enableTransition: boolean, { paddingLeft, paddingRight, paddingBottom, paddingTop }?: Partial<FitToOptions>): Promise<void[]>;
+    fitToBox(box3OrObject: _THREE.Box3 | _THREE.Object3D, enableTransition: boolean, { cover, paddingLeft, paddingRight, paddingBottom, paddingTop }?: Partial<FitToOptions>): Promise<void[]>;
     /**
      * Fit the viewport to the sphere or the bounding sphere of the object.
      * @param sphereOrMesh
@@ -623,7 +620,7 @@ export declare class CameraControls extends EventDispatcher {
      * @returns distance
      * @category Methods
      */
-    getDistanceToFitBox(width: number, height: number, depth: number): number;
+    getDistanceToFitBox(width: number, height: number, depth: number, cover?: boolean): number;
     /**
      * Calculate the distance to fit the sphere.
      * @param radius sphere radius

@@ -1,6 +1,7 @@
 import type * as _THREE from 'three';
 import {
 	THREESubset,
+	MOUSE_BUTTON,
 	ACTION,
 	PointerInput,
 	MouseButtons,
@@ -68,7 +69,6 @@ export class CameraControls extends EventDispatcher {
 	 *
 	 * ```js
 	 * import {
-	 * 	MOUSE,
 	 * 	Vector2,
 	 * 	Vector3,
 	 * 	Vector4,
@@ -82,7 +82,6 @@ export class CameraControls extends EventDispatcher {
 	 * } from 'three';
 	 *
 	 * const subsetOfTHREE = {
-	 * 	MOUSE     : MOUSE,
 	 * 	Vector2   : Vector2,
 	 * 	Vector3   : Vector3,
 	 * 	Vector4   : Vector4,
@@ -298,7 +297,6 @@ export class CameraControls extends EventDispatcher {
 	 * | --------------------- | -------- |
 	 * | `mouseButtons.left`   | `CameraControls.ACTION.ROTATE`* \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 	 * | `mouseButtons.right`  | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK`* \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
-	 * | `mouseButtons.shiftLeft`   | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE`* |
 	 * | `mouseButtons.wheel` ¹ | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 	 * | `mouseButtons.middle` ² | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY`* \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 	 *
@@ -470,8 +468,6 @@ export class CameraControls extends EventDispatcher {
 				isPerspectiveCamera( this._camera )  ? ACTION.DOLLY :
 				isOrthographicCamera( this._camera ) ? ACTION.ZOOM :
 				ACTION.NONE,
-			shiftLeft: ACTION.NONE,
-			// We can also add altLeft and etc if someone wants...
 		};
 
 		this.touches = {
@@ -501,27 +497,90 @@ export class CameraControls extends EventDispatcher {
 					pointerId: event.pointerId,
 					clientX: event.clientX,
 					clientY: event.clientY,
+					deltaX: 0,
+					deltaY: 0,
 				};
 				this._activePointers.push( pointer );
 
-				switch ( event.button ) {
+				// eslint-disable-next-line no-undef
+				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
 
-					case THREE.MOUSE.LEFT:
+				this._domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove, { passive: false } );
+				this._domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
 
-						this._state = event.shiftKey ? this.mouseButtons.shiftLeft : this.mouseButtons.left;
-						break;
+				startDragging( event );
 
-					case THREE.MOUSE.MIDDLE:
+			};
 
-						this._state = this.mouseButtons.middle;
-						break;
+			const onMouseDown = ( event: MouseEvent ) => {
 
-					case THREE.MOUSE.RIGHT:
+				if ( ! this._enabled ) return;
 
-						this._state = this.mouseButtons.right;
-						break;
+				const pointer = {
+					pointerId: 0,
+					clientX: event.clientX,
+					clientY: event.clientY,
+					deltaX: 0,
+					deltaY: 0,
+				};
+				this._activePointers.push( pointer );
 
-				}
+				// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
+				// eslint-disable-next-line no-undef
+				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
+
+				this._domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
+				this._domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
+
+				startDragging( event );
+
+			};
+
+			const onTouchStart = ( event:TouchEvent ): void => {
+
+				if ( ! this._enabled ) return;
+
+				event.preventDefault();
+
+				Array.prototype.forEach.call( event.changedTouches, ( touch ) => {
+
+					const pointer = {
+						pointerId: touch.identifier,
+						clientX: touch.clientX,
+						clientY: touch.clientY,
+						deltaX: 0,
+						deltaY: 0,
+					};
+					this._activePointers.push( pointer );
+
+				} );
+
+				// eslint-disable-next-line no-undef
+				this._domElement.ownerDocument.removeEventListener( 'touchmove', onTouchMove, { passive: false } as AddEventListenerOptions );
+				this._domElement.ownerDocument.removeEventListener( 'touchend', onTouchEnd );
+
+				this._domElement.ownerDocument.addEventListener( 'touchmove', onTouchMove, { passive: false } );
+				this._domElement.ownerDocument.addEventListener( 'touchend', onTouchEnd );
+
+				startDragging( event );
+
+			};
+
+			const onPointerMove = ( event: PointerEvent ) => {
+
+				if ( event.cancelable ) event.preventDefault();
+
+				const pointerId = event.pointerId;
+				const pointer = this._findPointerById( pointerId );
+
+				if ( ! pointer ) return;
+
+				pointer.clientX = event.clientX;
+				pointer.clientY = event.clientY;
+				pointer.deltaX = event.movementX;
+				pointer.deltaY = event.movementY;
 
 				if ( event.pointerType === 'touch' ) {
 
@@ -544,119 +603,29 @@ export class CameraControls extends EventDispatcher {
 
 					}
 
-				}
+				} else {
 
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+					this._state = 0;
 
-				this._domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove, { passive: false } );
-				this._domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
+					if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
 
-				startDragging();
+						this._state = this._state | this.mouseButtons.left;
 
-			};
+					}
 
-			const onMouseDown = ( event: MouseEvent ) => {
+					if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
 
-				if ( ! this._enabled ) return;
+						this._state = this._state | this.mouseButtons.middle;
 
-				const pointer = {
-					pointerId: 0,
-					clientX: event.clientX,
-					clientY: event.clientY,
-				};
-				this._activePointers.push( pointer );
+					}
 
-				switch ( event.button ) {
+					if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
 
-					case THREE.MOUSE.LEFT:
+						this._state = this._state | this.mouseButtons.right;
 
-						this._state = event.shiftKey ? this.mouseButtons.shiftLeft : this.mouseButtons.left;
-						break;
-
-					case THREE.MOUSE.MIDDLE:
-
-						this._state = this.mouseButtons.middle;
-						break;
-
-					case THREE.MOUSE.RIGHT:
-
-						this._state = this.mouseButtons.right;
-						break;
+					}
 
 				}
-
-				// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
-				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
-
-				this._domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
-				this._domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
-
-				startDragging();
-
-			};
-
-			const onTouchStart = ( event:TouchEvent ): void => {
-
-				if ( ! this._enabled ) return;
-
-				event.preventDefault();
-
-				Array.prototype.forEach.call( event.changedTouches, ( touch ) => {
-
-					const pointer = {
-						pointerId: touch.identifier,
-						clientX: touch.clientX,
-						clientY: touch.clientY,
-					};
-					this._activePointers.push( pointer );
-
-				} );
-
-				switch ( this._activePointers.length ) {
-
-					case 1:
-
-						this._state = this.touches.one;
-						break;
-
-					case 2:
-
-						this._state = this.touches.two;
-						break;
-
-					case 3:
-
-						this._state = this.touches.three;
-						break;
-
-				}
-
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'touchmove', onTouchMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'touchend', onTouchEnd );
-
-				this._domElement.ownerDocument.addEventListener( 'touchmove', onTouchMove, { passive: false } );
-				this._domElement.ownerDocument.addEventListener( 'touchend', onTouchEnd );
-
-				startDragging();
-
-			};
-
-			const onPointerMove = ( event: PointerEvent ) => {
-
-				if ( event.cancelable ) event.preventDefault();
-
-				const pointerId = event.pointerId;
-				const pointer = this._findPointerById( pointerId );
-
-				if ( ! pointer ) return;
-
-				pointer.clientX = event.clientX;
-				pointer.clientY = event.clientY;
 
 				dragging();
 
@@ -670,6 +639,28 @@ export class CameraControls extends EventDispatcher {
 
 				pointer.clientX = event.clientX;
 				pointer.clientY = event.clientY;
+				pointer.deltaX = event.movementX;
+				pointer.deltaY = event.movementY;
+
+				this._state = 0;
+
+				if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
+
+					this._state = this._state | this.mouseButtons.left;
+
+				}
+
+				if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
+
+					this._state = this._state | this.mouseButtons.middle;
+
+				}
+
+				if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
+
+					this._state = this._state | this.mouseButtons.right;
+
+				}
 
 				dragging();
 
@@ -688,6 +679,7 @@ export class CameraControls extends EventDispatcher {
 
 					pointer.clientX = touch.clientX;
 					pointer.clientY = touch.clientY;
+					// touch event does not have movementX and movementY.
 
 				} );
 
@@ -864,7 +856,7 @@ export class CameraControls extends EventDispatcher {
 
 			};
 
-			const startDragging = (): void => {
+			const startDragging = ( event: PointerEvent | MouseEvent | TouchEvent ): void => {
 
 				if ( ! this._enabled ) return;
 
@@ -893,6 +885,54 @@ export class CameraControls extends EventDispatcher {
 
 				}
 
+				if (
+					'touches' in event ||
+					'pointerType' in event && event.pointerType === 'touch'
+				) {
+
+					switch ( this._activePointers.length ) {
+
+						case 1:
+
+							this._state = this.touches.one;
+							break;
+
+						case 2:
+
+							this._state = this.touches.two;
+							break;
+
+						case 3:
+
+							this._state = this.touches.three;
+							break;
+
+					}
+
+				} else {
+
+					this._state = 0;
+
+					if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
+
+						this._state = this._state | this.mouseButtons.left;
+
+					}
+
+					if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
+
+						this._state = this._state | this.mouseButtons.middle;
+
+					}
+
+					if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
+
+						this._state = this._state | this.mouseButtons.right;
+
+					}
+
+				}
+
 				this.dispatchEvent( { type: 'controlstart' } );
 
 			};
@@ -903,90 +943,81 @@ export class CameraControls extends EventDispatcher {
 
 				extractClientCoordFromEvent( this._activePointers, _v2 );
 
-				const deltaX = lastDragPosition.x - _v2.x;
-				const deltaY = lastDragPosition.y - _v2.y;
+				// When pointer lock is enabled clientX, clientY, screenX, and screenY remain 0.
+				// If pointer lock is enabled, use the Delta directory, and assume active-pointer is not multiple.
+				const isPointerLockActive = this._domElement && document.pointerLockElement === this._domElement;
+				const deltaX = isPointerLockActive ? - this._activePointers[ 0 ].deltaX : lastDragPosition.x - _v2.x;
+				const deltaY = isPointerLockActive ? - this._activePointers[ 0 ].deltaY : lastDragPosition.y - _v2.y;
 
 				lastDragPosition.copy( _v2 );
 
-				switch ( this._state ) {
+				if (
+					( this._state & ACTION.ROTATE ) === ACTION.ROTATE ||
+					( this._state & ACTION.TOUCH_ROTATE ) === ACTION.TOUCH_ROTATE
+				) {
 
-					case ACTION.ROTATE:
-					case ACTION.TOUCH_ROTATE: {
+					this._rotateInternal( deltaX, deltaY );
 
-						this._rotateInternal( deltaX, deltaY );
-						break;
+				}
 
-					}
+				if (
+					( this._state & ACTION.DOLLY ) === ACTION.DOLLY ||
+					( this._state & ACTION.ZOOM ) === ACTION.ZOOM
+				) {
 
-					case ACTION.DOLLY:
-					case ACTION.ZOOM: {
+					const dollyX = this.dollyToCursor ? ( dragStartPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
+					const dollyY = this.dollyToCursor ? ( dragStartPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
+					this._state === ACTION.DOLLY ?
+						this._dollyInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
+						this._zoomInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
 
-						const dollyX = this.dollyToCursor ? ( dragStartPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
-						const dollyY = this.dollyToCursor ? ( dragStartPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
-						this._state === ACTION.DOLLY ?
-							this._dollyInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
-							this._zoomInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
-						break;
+				}
 
-					}
+				if (
+					( this._state & ACTION.TOUCH_DOLLY ) === ACTION.TOUCH_DOLLY ||
+					( this._state & ACTION.TOUCH_ZOOM ) === ACTION.TOUCH_ZOOM ||
+					( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+					( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK ||
+					( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+					( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
+				) {
 
-					case ACTION.TOUCH_DOLLY:
-					case ACTION.TOUCH_ZOOM:
-					case ACTION.TOUCH_DOLLY_TRUCK:
-					case ACTION.TOUCH_ZOOM_TRUCK:
-					case ACTION.TOUCH_DOLLY_OFFSET:
-					case ACTION.TOUCH_ZOOM_OFFSET: {
+					const dx = _v2.x - this._activePointers[ 1 ].clientX;
+					const dy = _v2.y - this._activePointers[ 1 ].clientY;
+					const distance = Math.sqrt( dx * dx + dy * dy );
+					const dollyDelta = dollyStart.y - distance;
+					dollyStart.set( 0, distance );
 
-						const dx = _v2.x - this._activePointers[ 1 ].clientX;
-						const dy = _v2.y - this._activePointers[ 1 ].clientY;
-						const distance = Math.sqrt( dx * dx + dy * dy );
-						const dollyDelta = dollyStart.y - distance;
-						dollyStart.set( 0, distance );
+					const dollyX = this.dollyToCursor ? ( lastDragPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
+					const dollyY = this.dollyToCursor ? ( lastDragPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
 
-						const dollyX = this.dollyToCursor ? ( lastDragPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
-						const dollyY = this.dollyToCursor ? ( lastDragPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
+					this._state === ACTION.TOUCH_DOLLY ||
+					this._state === ACTION.TOUCH_DOLLY_TRUCK ||
+					this._state === ACTION.TOUCH_DOLLY_OFFSET ?
+						this._dollyInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
+						this._zoomInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
 
-						this._state === ACTION.TOUCH_DOLLY ||
-						this._state === ACTION.TOUCH_DOLLY_TRUCK ||
-						this._state === ACTION.TOUCH_DOLLY_OFFSET ?
-							this._dollyInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
-							this._zoomInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+				}
 
-						if (
-							this._state === ACTION.TOUCH_DOLLY_TRUCK ||
-							this._state === ACTION.TOUCH_ZOOM_TRUCK
-						) {
+				if (
+					( this._state & ACTION.TRUCK ) === ACTION.TRUCK ||
+					( this._state & ACTION.TOUCH_TRUCK ) === ACTION.TOUCH_TRUCK ||
+					( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+					( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK
+				) {
 
-							this._truckInternal( deltaX, deltaY, false );
+					this._truckInternal( deltaX, deltaY, false );
 
-						} else if (
-							this._state === ACTION.TOUCH_DOLLY_OFFSET ||
-							this._state === ACTION.TOUCH_ZOOM_OFFSET
-						) {
+				}
 
-							this._truckInternal( deltaX, deltaY, true );
+				if (
+					( this._state & ACTION.OFFSET ) === ACTION.OFFSET ||
+					( this._state & ACTION.TOUCH_OFFSET ) === ACTION.TOUCH_OFFSET ||
+					( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+					( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
+				) {
 
-						}
-
-						break;
-
-					}
-
-					case ACTION.TRUCK:
-					case ACTION.TOUCH_TRUCK: {
-
-						this._truckInternal( deltaX, deltaY, false );
-						break;
-
-					}
-
-					case ACTION.OFFSET:
-					case ACTION.TOUCH_OFFSET: {
-
-						this._truckInternal( deltaX, deltaY, true );
-						break;
-
-					}
+					this._truckInternal( deltaX, deltaY, true );
 
 				}
 
@@ -1589,18 +1620,19 @@ export class CameraControls extends EventDispatcher {
 
 	/**
 	 * Fit the viewport to the box or the bounding box of the object, using the nearest axis. paddings are in unit.
-	 *
+	 * set `cover: true` to fill enter screen.
 	 * e.g.
 	 * ```
 	 * cameraControls.fitToBox( myMesh );
 	 * ```
 	 * @param box3OrObject Axis aligned bounding box to fit the view.
 	 * @param enableTransition Whether to move smoothly or immediately.
-	 * @param options | `<object>` { paddingTop: number, paddingLeft: number, paddingBottom: number, paddingRight: number }
+	 * @param options | `<object>` { cover: boolean, paddingTop: number, paddingLeft: number, paddingBottom: number, paddingRight: number }
 	 * @returns Transition end promise
 	 * @category Methods
 	 */
 	fitToBox( box3OrObject: _THREE.Box3 | _THREE.Object3D, enableTransition: boolean, {
+		cover = false,
 		paddingLeft = 0,
 		paddingRight = 0,
 		paddingBottom = 0,
@@ -1626,13 +1658,15 @@ export class CameraControls extends EventDispatcher {
 		promises.push( this.rotateTo( theta, phi, enableTransition ) );
 
 		const normal = _v3A.setFromSpherical( this._sphericalEnd ).normalize();
-		const rotation = _quaternionA.setFromUnitVectors( normal, _AXIS_Z ).multiply( this._yAxisUpSpaceInverse );
+		const rotation = _quaternionA.setFromUnitVectors( normal, _AXIS_Z );
 		const viewFromPolar = approxEquals( Math.abs( normal.y ), 1 );
 		if ( viewFromPolar ) {
 
 			rotation.multiply( _quaternionB.setFromAxisAngle( _AXIS_Y, theta ) );
 
 		}
+
+		rotation.multiply( this._yAxisUpSpaceInverse );
 
 		// make oriented bounding box
 		const bb = _box3B.makeEmpty();
@@ -1669,20 +1703,28 @@ export class CameraControls extends EventDispatcher {
 		_v3B.copy( aabb.max ).applyQuaternion( rotation );
 		bb.expandByPoint( _v3B );
 
-		rotation.setFromUnitVectors( _AXIS_Z, normal );
-
 		// add padding
 		bb.min.x -= paddingLeft;
 		bb.min.y -= paddingBottom;
 		bb.max.x += paddingRight;
 		bb.max.y += paddingTop;
 
+		rotation.setFromUnitVectors( _AXIS_Z, normal );
+
+		if ( viewFromPolar ) {
+
+			rotation.premultiply( _quaternionB.invert() );
+
+		}
+
+		rotation.premultiply( this._yAxisUpSpace );
+
 		const bbSize = bb.getSize( _v3A );
 		const center = bb.getCenter( _v3B ).applyQuaternion( rotation );
 
 		if ( isPerspectiveCamera( this._camera ) ) {
 
-			const distance = this.getDistanceToFitBox( bbSize.x, bbSize.y, bbSize.z );
+			const distance = this.getDistanceToFitBox( bbSize.x, bbSize.y, bbSize.z, cover );
 			promises.push( this.moveTo( center.x, center.y, center.z, enableTransition ) );
 			promises.push( this.dollyTo( distance, enableTransition ) );
 			promises.push( this.setFocalOffset( 0, 0, 0, enableTransition ) );
@@ -1692,7 +1734,7 @@ export class CameraControls extends EventDispatcher {
 			const camera = this._camera;
 			const width = camera.right - camera.left;
 			const height = camera.top - camera.bottom;
-			const zoom = Math.min( width / bbSize.x, height / bbSize.y );
+			const zoom = cover ? Math.max( width / bbSize.x, height / bbSize.y ) : Math.min( width / bbSize.x, height / bbSize.y );
 			promises.push( this.moveTo( center.x, center.y, center.z, enableTransition ) );
 			promises.push( this.zoomTo( zoom, enableTransition ) );
 			promises.push( this.setFocalOffset( 0, 0, 0, enableTransition ) );
@@ -2029,7 +2071,7 @@ export class CameraControls extends EventDispatcher {
 	 * @returns distance
 	 * @category Methods
 	 */
-	getDistanceToFitBox( width: number, height: number, depth: number ): number {
+	getDistanceToFitBox( width: number, height: number, depth: number, cover: boolean = false ): number {
 
 		if ( notSupportedInOrthographicCamera( this._camera, 'getDistanceToFitBox' ) ) return this._spherical.radius;
 
@@ -2037,7 +2079,7 @@ export class CameraControls extends EventDispatcher {
 		const fov = this._camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD;
 		const aspect = this._camera.aspect;
 
-		const heightToFit = boundingRectAspect < aspect ? height : width / aspect;
+		const heightToFit = ( cover ? boundingRectAspect > aspect : boundingRectAspect < aspect ) ? height : width / aspect;
 		return heightToFit * 0.5 / Math.tan( fov * 0.5 ) + depth * 0.5;
 
 	}

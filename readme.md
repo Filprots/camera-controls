@@ -19,10 +19,11 @@ A camera control for three.js, similar to THREE.OrbitControls yet supports smoot
 - [boundary](https://yomotsu.github.io/camera-controls/examples/boundary.html)
 - [focal offset](https://yomotsu.github.io/camera-controls/examples/focal-offset.html)
 - [click to set orbit point](https://yomotsu.github.io/camera-controls/examples/click-to-set-orbit-point.html)
-- [`viewport` within the canvas](https://yomotsu.github.io/camera-controls/examples/viewport.html)
+- [viewport within the canvas](https://yomotsu.github.io/camera-controls/examples/viewport.html)
 - [z-up camera](https://yomotsu.github.io/camera-controls/examples/camera-up.html)
 - [orthographic](https://yomotsu.github.io/camera-controls/examples/orthographic.html)
 - [user input config](https://yomotsu.github.io/camera-controls/examples/config.html)
+- [mouse drag with modifier keys](https://yomotsu.github.io/camera-controls/examples/mouse-drag-with-modifier-keys.html)
 - [combined gestures](https://yomotsu.github.io/camera-controls/examples/combined-gestures.html)
 - [keyboard events](https://yomotsu.github.io/camera-controls/examples/keyboard.html)
 - [rest and sleep events](https://yomotsu.github.io/camera-controls/examples/rest-and-sleep.html)
@@ -84,7 +85,6 @@ Note: If you do not wish to use enter three.js to reduce file size(tree-shaking 
 
 ```js
 import {
-	MOUSE,
 	Vector2,
 	Vector3,
 	Vector4,
@@ -98,7 +98,6 @@ import {
 } from 'three';
 
 const subsetOfTHREE = {
-	MOUSE     : MOUSE,
 	Vector2   : Vector2,
 	Vector3   : Vector3,
 	Vector4   : Vector4,
@@ -209,7 +208,6 @@ Working example: [user input config](https://yomotsu.github.io/camera-controls/e
 | --------------------- | -------- |
 | `mouseButtons.left`   | `CameraControls.ACTION.ROTATE`* \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 | `mouseButtons.right`  | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK`* \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
-| `mouseButtons.shiftLeft`   | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE`* |
 | `mouseButtons.wheel` ¹ | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY` \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 | `mouseButtons.middle` ² | `CameraControls.ACTION.ROTATE` \| `CameraControls.ACTION.TRUCK` \| `CameraControls.ACTION.OFFSET` \| `CameraControls.ACTION.DOLLY`* \| `CameraControls.ACTION.ZOOM` \| `CameraControls.ACTION.NONE` |
 
@@ -429,12 +427,14 @@ Move `target` position to given point.
 #### `fitToBox( box3OrMesh, enableTransition, { paddingTop, paddingLeft, paddingBottom, paddingRight } )`
 
 Fit the viewport to the box or the bounding box of the object, using the nearest axis. paddings are in unit.
+set `cover: true` to fill enter screen.
 
 | Name                    | Type                         | Description |
 | ----------------------- | ---------------------------- | ----------- |
 | `box3OrMesh`            | `THREE.Box3` \| `THREE.Mesh` | Axis aligned bounding box to fit the view. |
 | `enableTransition`      | `boolean`                    | Whether to move smoothly or immediately |
 | `options`               | `object`                     | Options |
+| `options.cover`         | `number`                     | Whether fill enter screen or not. Default is `false` |
 | `options.paddingTop`    | `number`                     | Padding top. Default is `0` |
 | `options.paddingRight`  | `number`                     | Padding right. Default is `0` |
 | `options.paddingBottom` | `number`                     | Padding bottom. Default is `0` |
