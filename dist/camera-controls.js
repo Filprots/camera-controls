@@ -1846,6 +1846,7 @@
 	        if (silent) {
 	            this._updatedLastTime = false;
 	            this._needsUpdate = false;
+	            this.dispatchEvent({ type: 'silentUpdate' });
 	            return false;
 	        }
 	        const updated = this._needsUpdate;

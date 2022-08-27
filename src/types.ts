@@ -93,6 +93,7 @@ export interface FitToOptions {
 
 export interface CameraControlsEventMap {
 	update         : { type: 'update', target: any };
+	silentUpdate   : { type: 'silentUpdate', target: any };
 	wake           : { type: 'wake', target: any };
 	rest           : { type: 'rest', target: any };
 	sleep          : { type: 'sleep', target: any };

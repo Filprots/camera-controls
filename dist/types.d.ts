@@ -73,6 +73,10 @@ export interface CameraControlsEventMap {
         type: 'update';
         target: any;
     };
+    silentUpdate: {
+        type: 'silentUpdate';
+        target: any;
+    };
     wake: {
         type: 'wake';
         target: any;

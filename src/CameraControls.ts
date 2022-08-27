@@ -2357,6 +2357,7 @@ export class CameraControls extends EventDispatcher {
 
 			this._updatedLastTime = false;
 			this._needsUpdate = false;
+			this.dispatchEvent( { type: 'silentUpdate' } );
 			return false;
 
 		}
