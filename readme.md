@@ -2,9 +2,10 @@
 
 A camera control for three.js, similar to THREE.OrbitControls yet supports smooth transitions and more features.
 
-[![Latest NPM release](https://img.shields.io/npm/v/camera-controls.svg)](https://www.npmjs.com/package/camera-controls)
+[![Latest NPM release](https://img.shields.io/npm/v/camera-controls.svg)](https://www.npmjs.com/package/camera-controls) [![Open in GitHub Codespaces](https://img.shields.io/static/v1?label=GitHub&message=Open%20in%20%20Codespaces&color=24292f)](https://github.com/codespaces/new?template_repository=yomotsu%2Fcamera-controls)
 
-[documentation](https://camera-controls.pages.dev/classes/CameraControls)
+[documentation](https://yomotsu.github.io/camera-controls/classes/CameraControls)
+
 ## Examples
 
 | camera move    | default user input (Configurable) |
@@ -19,27 +20,36 @@ A camera control for three.js, similar to THREE.OrbitControls yet supports smoot
 - [boundary](https://yomotsu.github.io/camera-controls/examples/boundary.html)
 - [focal offset](https://yomotsu.github.io/camera-controls/examples/focal-offset.html)
 - [click to set orbit point](https://yomotsu.github.io/camera-controls/examples/click-to-set-orbit-point.html)
+- [look in the point direction](https://yomotsu.github.io/camera-controls/examples/look-in-direction.html)
 - [viewport within the canvas](https://yomotsu.github.io/camera-controls/examples/viewport.html)
 - [z-up camera](https://yomotsu.github.io/camera-controls/examples/camera-up.html)
 - [orthographic](https://yomotsu.github.io/camera-controls/examples/orthographic.html)
+- [event attach / detach](https://yomotsu.github.io/camera-controls/examples/event-attach.html)
 - [user input config](https://yomotsu.github.io/camera-controls/examples/config.html)
 - [mouse drag with modifier keys](https://yomotsu.github.io/camera-controls/examples/mouse-drag-with-modifier-keys.html)
 - [combined gestures](https://yomotsu.github.io/camera-controls/examples/combined-gestures.html)
 - [keyboard events](https://yomotsu.github.io/camera-controls/examples/keyboard.html)
 - [rest and sleep events](https://yomotsu.github.io/camera-controls/examples/rest-and-sleep.html)
-- [changing-cursor](https://yomotsu.github.io/camera-controls/examples/cursor.html)
+- [changing the cursor](https://yomotsu.github.io/camera-controls/examples/cursor.html)
 - [collision](https://yomotsu.github.io/camera-controls/examples/collision.html)
+- [collision (custom)](https://yomotsu.github.io/camera-controls/examples/collision-custom.html)
 - [first-person](https://yomotsu.github.io/camera-controls/examples/first-person.html)
-- [third-person](https://yomotsu.github.io/meshwalk/example/5_terrain.html) (with [meshwalk](https://github.com/yomotsu/meshwalk))
+- [third-person](https://yomotsu.github.io/meshwalk/examples/5_terrain.html) (with [meshwalk](https://github.com/yomotsu/meshwalk))
+- [pointer lock](https://yomotsu.github.io/camera-controls/examples/pointer-lock.html)
 - [auto rotate](https://yomotsu.github.io/camera-controls/examples/auto-rotate.html)
+- [view offset translate](https://yomotsu.github.io/camera-controls/examples/view-offset.html)
 - [camera shake effect](https://yomotsu.github.io/camera-controls/examples/effect-shake.html)
-- [rotate with duration and easing](https://yomotsu.github.io/camera-controls/examples/easing.html) (with [gsap](https://www.npmjs.com/package/gsap))
+- [rotate with time duration and easing](https://yomotsu.github.io/camera-controls/examples/easing.html) (with [gsap](https://www.npmjs.com/package/gsap))
 - [path animation](https://yomotsu.github.io/camera-controls/examples/path-animation.html) (with [gsap](https://www.npmjs.com/package/gsap))
 - [complex transitions with `await`](https://yomotsu.github.io/camera-controls/examples/await-transitions.html)
-- [dragging outside the iframe](https://yomotsu.github.io/camera-controls/examples/iframe.html)
-- [in react-three-fiber](https://codesandbox.io/s/react-three-fiber-camera-controls-4jjor?file=/src/App.tsx)
+- [set view padding](https://yomotsu.github.io/camera-controls/examples/padding-with-view-offset.html)
+- [outside of iframe dragging](https://yomotsu.github.io/camera-controls/examples/iframe.html)
+- [in react-three-fiber (simplest)](https://codesandbox.io/s/react-three-fiber-camera-controls-4jjor?file=/src/App.tsx)
+- [in react-three-fiber (drei official)](https://codesandbox.io/s/sew669) (see [doc](https://github.com/pmndrs/drei#cameracontrols))
 
 ## Usage
+
+(The below code is for three.js users. If you use react-three-fiber (aka R3F), r3f-ready camera-controls is available on [@react-three/drei](https://www.npmjs.com/package/@react-three/drei)
 
 ```javascript
 import * as THREE from 'three';
@@ -94,7 +104,6 @@ import {
 	Box3,
 	Sphere,
 	Raycaster,
-	MathUtils,
 } from 'three';
 
 const subsetOfTHREE = {
@@ -107,10 +116,6 @@ const subsetOfTHREE = {
 	Box3      : Box3,
 	Sphere    : Sphere,
 	Raycaster : Raycaster,
-	MathUtils : {
-		DEG2RAD: MathUtils.DEG2RAD,
-		clamp: MathUtils.clamp,
-	},
 };
 
 CameraControls.install( { THREE: subsetOfTHREE } );
@@ -121,7 +126,7 @@ CameraControls.install( { THREE: subsetOfTHREE } );
 `CameraControls( camera, domElement )`
 
 - `camera` is a `THREE.PerspectiveCamera` or `THREE.OrthographicCamera` to be controlled.
-- `domElement` is a `HTMLElement` for draggable area.
+- `domElement` is a `HTMLElement` for draggable area. (optional. if domElement is omitted here, can be connect later with `.connect()`)
 
 ## Terms
 
@@ -150,7 +155,7 @@ See [the demo](https://github.com/yomotsu/camera-movement-comparison#dolly-vs-zo
 | `.active`                 | `boolean` | `false`     | Returns `true` if the controls are active updating. |
 | `.currentAction`          | `ACTION`  | N/A         | Getter for the current `ACTION`. |
 | `.distance`               | `number`  | N/A         | Current distance. |
-| `.minDistance`            | `number`  | `0`         | Minimum distance for dolly. The value must be higher than `0` |
+| `.minDistance`            | `number`  | `Number.EPSILON` | Minimum distance for dolly. The value must be higher than `0` |
 | `.maxDistance`            | `number`  | `Infinity`  | Maximum distance for dolly. |
 | `.minZoom` 	              | `number`  | `0.01`      | Minimum camera zoom. |
 | `.maxZoom` 	              | `number`  | `Infinity`  | Maximum camera zoom. |
@@ -162,23 +167,22 @@ See [the demo](https://github.com/yomotsu/camera-movement-comparison#dolly-vs-zo
 | `.maxAzimuthAngle`        | `number`  | `Infinity`  | In radians. |
 | `.boundaryFriction`       | `number`  | `0.0`       | Friction ratio of the boundary. |
 | `.boundaryEnclosesCamera` | `boolean` | `false`     | Whether camera position should be enclosed in the boundary or not. |
-| `.dampingFactor`          | `number`  | `0.05`      | The damping inertia. The value must be between `Math.EPSILON` to `1` inclusive. Setting `1` to disable smooth transitions. |
-| `.draggingDampingFactor`  | `number`  | `0.25`      | The damping inertia while dragging. The value must be between `Math.EPSILON` to `1` inclusive. Setting `1` to disable smooth transitions. |
+| `.smoothTime`             | `number`  | `0.25`      | Approximate time in seconds to reach the target. A smaller value will reach the target faster. |
+| `.draggingSmoothTime`     | `number`  | `0.125`     | The smoothTime while dragging. |
 | `.azimuthRotateSpeed`     | `number`  | `1.0`       | Speed of azimuth rotation. |
 | `.polarRotateSpeed`       | `number`  | `1.0`       | Speed of polar rotation. |
 | `.dollySpeed`             | `number`  | `1.0`       | Speed of mouse-wheel dollying. |
 | `.truckSpeed`             | `number`  | `2.0`       | Speed of drag for truck and pedestal. |
 | `.verticalDragToForward`  | `boolean` | `false`     | The same as `.screenSpacePanning` in three.js's OrbitControls. |
 | `.dollyToCursor`          | `boolean` | `false`     | `true` to enable Dolly-in to the mouse cursor coords. |
+| `.dollyDragInverted`      | `boolean` | `false`     | `true` to invert direction when dollying or zooming via drag. |
 | `.colliderMeshes`         | `array`   | `[]`        | An array of Meshes to collide with camera ². |
-| `.infinityDolly`          | `boolean` | `false`     | `true` to enable Infinity Dolly ³. |
 | `.restThreshold`          | `number`  | `0.0025`    | Controls how soon the `rest` event fires as the camera slows |
 
 1. Every 360 degrees turn is added to `.azimuthAngle` value, which is accumulative.  
   `360º = 360 * THREE.MathUtils.DEG2RAD = Math.PI * 2`, `720º = Math.PI * 4`.  
   **Tip**: [How to normalize accumulated azimuthAngle?](#tips)
 2. Be aware colliderMeshes may decrease performance. The collision test uses 4 raycasters from the camera since the near plane has 4 corners.
-3. When the Dolly distance is less than the `minDistance`, radius of the sphere will be set `minDistance` automatically.
 
 ## Events
 
@@ -222,8 +226,8 @@ Working example: [user input config](https://yomotsu.github.io/camera-controls/e
 | fingers to assign     | behavior |
 | --------------------- | -------- |
 | `touches.one` | `CameraControls.ACTION.TOUCH_ROTATE`* \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.DOLLY` | `CameraControls.ACTION.ZOOM` | `CameraControls.ACTION.NONE` |
-| `touches.two` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_DOLLY` \| `ACTION.TOUCH_ZOOM` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
-| `touches.three` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
+| `touches.two` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_DOLLY_ROTATE` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_ZOOM_ROTATE` \| `ACTION.TOUCH_DOLLY` \| `ACTION.TOUCH_ZOOM` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
+| `touches.three` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_DOLLY_ROTATE` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_ZOOM_ROTATE` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
 
 - \* is the default.
 - The default of `touches.two` and `touches.three` is:
@@ -279,11 +283,11 @@ Camera view will rotate over the orbit pivot absolutely:
 
 Azimuth angle
 ```
-      0º
-      |
-90º -- -- -90º
-      |
-     180º
+       0º
+         \
+ 90º -----+----- -90º
+           \
+           180º
 ```
 0º front, 90º (`Math.PI / 2`) left, -90º (`- Math.PI / 2`) right, 180º (`Math.PI`) back
 
@@ -374,6 +378,17 @@ Truck and pedestal camera using current azimuthal angle.
 
 ---
 
+#### `lookInDirectionOf( x, y, z, enableTransition )`
+
+Look in the given point direction.
+
+| Name               | Type      | Description |
+| ------------------ | --------- | ----------- |
+| `x`                | `number`  | point x |
+| `y`                | `number`  | point y |
+| `z`                | `number`  | point z |
+| `enableTransition` | `boolean` | Whether to move smoothly or immediately |
+
 #### `setFocalOffset( x, y, z, enableTransition )`
 
 Set focal offset using the screen parallel coordinates.
@@ -424,6 +439,17 @@ Move `target` position to given point.
 
 ---
 
+#### `elevate( height, enableTransition )`
+
+Move up / down.
+
+| Name               | Type      | Description |
+| ------------------ | --------- | ----------- |
+| `height`           | `number`  | Amount to move up / down. Negative value to move down |
+| `enableTransition` | `boolean` | Whether to move smoothly or immediately |
+
+---
+
 #### `fitToBox( box3OrMesh, enableTransition, { paddingTop, paddingLeft, paddingBottom, paddingRight } )`
 
 Fit the viewport to the box or the bounding box of the object, using the nearest axis. paddings are in unit.
@@ -434,7 +460,7 @@ set `cover: true` to fill enter screen.
 | `box3OrMesh`            | `THREE.Box3` \| `THREE.Mesh` | Axis aligned bounding box to fit the view. |
 | `enableTransition`      | `boolean`                    | Whether to move smoothly or immediately |
 | `options`               | `object`                     | Options |
-| `options.cover`         | `number`                     | Whether fill enter screen or not. Default is `false` |
+| `options.cover`         | `boolean`                    | Whether fill enter screen or not. Default is `false` |
 | `options.paddingTop`    | `number`                     | Padding top. Default is `0` |
 | `options.paddingRight`  | `number`                     | Padding right. Default is `0` |
 | `options.paddingBottom` | `number`                     | Padding bottom. Default is `0` |
@@ -455,7 +481,7 @@ Fit the viewport to the sphere or the bounding sphere of the object.
 
 #### `setLookAt( positionX, positionY, positionZ, targetX, targetY, targetZ, enableTransition )`
 
-Make an orbit with given points.
+Look at the `target` from the `position`.
 
 | Name               | Type      | Description |
 | ------------------ | --------- | ----------- |
@@ -494,7 +520,8 @@ Similar to `setLookAt`, but it interpolates between two states.
 
 #### `setPosition( positionX, positionY, positionZ, enableTransition )`
 
-`setLookAt` without target, keep gazing at the current target.
+Set angle and distance by given position.
+An alias of 1setLookAt()1, without target change. Thus keep gazing at the current target
 
 | Name               | Type      | Description |
 | ------------------ | --------- | ----------- |
@@ -507,7 +534,8 @@ Similar to `setLookAt`, but it interpolates between two states.
 
 #### `setTarget( targetX, targetY, targetZ, enableTransition )`
 
-`setLookAt` without position, Stay still at the position.
+Set the target position where gaze at.
+An alias of `setLookAt()`, without position change. Thus keep the same position.
 
 | Name               | Type      | Description |
 | ------------------ | --------- | ----------- |
@@ -620,6 +648,31 @@ When you change camera-up vector, run `.updateCameraUp()` to sync.
 
 ---
 
+#### `applyCameraUp()`
+
+Apply current camera-up direction to the camera.  
+The orbit system will be re-initialized with the current position.
+
+---
+
+#### `connect()`
+
+Attach all internal event handlers to enable drag control.
+
+---
+
+#### `disconnect()`
+
+Detach all internal event handlers to disable drag control.
+
+---
+
+#### `dispose()`
+
+Dispose the cameraControls instance itself, remove all eventListeners.
+
+---
+
 #### `addEventListener( type: string, listener: function )`
 
 Adds the specified event listener.
@@ -650,19 +703,40 @@ Reproduce the control state with JSON. `enableTransition` is where anim or not i
 
 ---
 
-#### `dispose()`
-
-Dispose the cameraControls instance itself, remove all eventListeners.
-
----
-
 ## Tips
 
 ### Normalize accumulated azimuth angle:
 If you need a normalized accumulated azimuth angle (between 0 and 360 deg), compute with [THREE.MathUtils.euclideanModulo](https://threejs.org/docs/#api/en/math/MathUtils)
 e.g.:
 ``` js
-const normalizedAzimuthAngle = THREE.MathUtils.euclideanModulo( cameraControls.azimuthAngle, 360 * THREE.MathUtils.DEG2RAD );
+const TAU = Math.PI * 2;
+
+function normalizeAngle( angle ) {
+
+	return THREE.MathUtils.euclideanModulo( angle, TAU );
+
+}
+
+const normalizedAzimuthAngle = normalizeAngle( cameraControls.azimuthAngle );
+```
+
+---
+### Find the absolute angle to shortest azimuth rotatation:
+You may rotate 380deg but actually, you expect to rotate -20deg.  
+To get the absolute angle, use the below:
+
+```js
+const TAU = Math.PI * 2;
+
+function absoluteAngle( targetAngle, sourceAngle ){
+
+  const angle = targetAngle - sourceAngle
+  return THREE.MathUtils.euclideanModulo( angle + Math.PI, TAU ) - Math.PI;
+
+}
+
+console.log( absoluteAngle( 380 * THREE.MathUtils.DEG2RAD, 0 ) * THREE.MathUtils.RAD2DEG ); // -20deg
+console.log( absoluteAngle( -1000 * THREE.MathUtils.DEG2RAD, 0 ) * THREE.MathUtils.RAD2DEG ); // 80deg
 ```
 
 ---
@@ -680,7 +754,7 @@ async function complexTransition() {
 
 This will rotate the camera, then dolly, and finally fit to the bounding sphere of the `mesh`.
 
-The speed and timing of transitions can be tuned using `.restThreshold` and `.dampingFactor`.
+The speed and timing of transitions can be tuned using `.restThreshold` and `.smoothTime`.
 
 If `enableTransition` is `false`, the promise will resolve immediately:
 
@@ -691,12 +765,45 @@ await cameraControls.dollyTo( 3, false );
 
 ---
 
-## Breaking changes
+## V2 Migration Guide
 
-@1.16.0 `dolly()` will take opposite value. e.g. dolly-in to `dolly( 1 )` (used be dolly-in to `dolly( -1 )`)
+camera-controls used to use simple damping for its smooth transition. camera-controls v2 now uses [SmoothDamp](https://docs.unity3d.com/ScriptReference/Mathf.SmoothDamp.html).
+one of the benefits of using SmoothDamp is, SmoothDamp transition can be controlled with smoothTime which is approximately the time it will take to reach the end position.
+Also, the Maximum speed of the transition can be set with `max speed`.
+
+Due to the change, the following are needed.
+(if you haven't changed `dampingFactor` and `draggingDampingFactor` in v1.x, nothing is needed)
+
+deprecated
+- `dampingFactor` (use smoothTime instead)
+- `draggingDampingFactor` (use draggingSmoothTime instead)
+
+added
+- `smoothTime`
+- `draggingSmoothTime`
+- `maxSpeed`
+
+...That's it!
 
 ## Contributors
 
 This project exists thanks to all the people who contribute.
 
 ![](https://contributors-img.web.app/image?repo=yomotsu/camera-controls)
+
+
+## Release
+
+Pre-requisites:
+1. a npm registry up and running with a [`NPM_TOKEN`](https://docs.npmjs.com/creating-and-viewing-access-tokens)
+   ```sh
+	$ export NPM_TOKEN=npm_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	 ```
+2. a Github [PAT](https://github.com/semantic-release/github#github-authentication)
+   ```sh
+	 $ export GITHUB_TOKEN=github_pat_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	 ```
+
+```sh
+$ npm run release -- --dry-run
+```

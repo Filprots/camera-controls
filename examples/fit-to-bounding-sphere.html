@@ -15,16 +15,26 @@
 	<button onclick="cameraControls.reset( true )">reset</button><br>
 </div>
 
-<script src="https://unpkg.com/three@0.143.0/build/three.min.js"></script>
-<script src="https://unpkg.com/three@0.143.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="../dist/camera-controls.js"></script>
-<script>
+<script async src="https://unpkg.com/es-module-shims@1.7.1/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+	"imports": {
+		"three": "https://unpkg.com/three@0.151.2/build/three.module.js",
+		"three/addons/": "https://unpkg.com/three@0.151.2/examples/jsm/"
+	}
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import CameraControls from './dist/camera-controls.module.js';
+
 CameraControls.install( { THREE: THREE } );
 
-const width  = window.innerWidth;
+const width = window.innerWidth;
 const height = window.innerHeight;
 const clock = new THREE.Clock();
-const scene  = new THREE.Scene();
+const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
 camera.position.set( 0, 0, 5 );
 const renderer = new THREE.WebGLRenderer();
@@ -52,15 +62,14 @@ new THREE.TextureLoader().load( './env.jpg', ( equirectangularMap ) => {
 const gridHelper = new THREE.GridHelper( 50, 50 );
 scene.add( gridHelper );
 
-new THREE.GLTFLoader().load( './rubber-duck.glb', function ( gltf ) {
+new GLTFLoader().load( './rubber-duck.glb', function ( gltf ) {
 
-	const boundingSphere = computeBoundingSphere( gltf.scene );
+	const boundingSphere = CameraControls.createBoundingSphere( gltf.scene );
 	const sphereHelper = new THREE.Mesh(
 		new THREE.SphereBufferGeometry( boundingSphere.radius, 16, 16 ),
 		new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } )
 	);
 	sphereHelper.position.copy( boundingSphere.center );
-	boundingSphere
 
 	scene.add( gltf.scene );
 	scene.add( sphereHelper );
@@ -96,46 +105,8 @@ renderer.render( scene, camera );
 
 } )();
 
-const _box = new THREE.Box3();
-const _vec3 = new THREE.Vector3();
-function computeBoundingSphere( object3d ) {
-
-	// var meshCount = 0;
-	const points = [];
-	const boundingSphere = new THREE.Sphere();
-	const center = boundingSphere.center;
-
-	// find the center
-	object3d.traverse( function( object ) {
-
-		if ( ! object.isMesh ) return;
-
-		_box.expandByObject( object );
-
-	} );
-	_box.getCenter( center );
-
-	// find the radius
-	var maxRadiusSq = 0;
-	object3d.traverse( function( object ) {
-
-		if ( ! object.isMesh ) return;
-
-		const position = object.geometry.attributes.position;
-
-		for ( var i = 0, l = position.count; i < l; i ++ ) {
-
-			_vec3.fromBufferAttribute( position, i );
-			maxRadiusSq = Math.max( maxRadiusSq, center.distanceToSquared( _vec3 ) );
-
-		}
-
-	} );
-
-	boundingSphere.radius = Math.sqrt( maxRadiusSq );
-	return boundingSphere;
-
-}
+// make variable available to browser console
+globalThis.cameraControls = cameraControls;
 </script>
 
 </body>

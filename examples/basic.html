@@ -12,8 +12,9 @@
 	<label><input type="checkbox" onchange="cameraControls.verticalDragToForward = this.checked">vertical drag to move forward</label>
 	<br>
 	<label><input type="checkbox" onchange="cameraControls.dollyToCursor = this.checked">dolly to cursor</label>
+
 	<br>
-	<label><input type="checkbox" onchange="cameraControls.infinityDolly = this.checked">infinity dolly</label>
+	<label><input type="checkbox" onchange="cameraControls.dollyDragInverted = this.checked">dolly drag inverted</label>
 	<br>
 	<br>
 	<button onclick="cameraControls.rotate(  45 * THREE.MathUtils.DEG2RAD, 0, true )">rotate theta 45deg</button>
@@ -49,15 +50,24 @@
 	<button onclick="cameraControls.enabled = true;">enable mouse/touch controls</button>
 </div>
 
-<script src="https://unpkg.com/three@0.143.0/build/three.min.js"></script>
-<script src="../dist/camera-controls.js"></script>
-<script>
+<script async src="https://unpkg.com/es-module-shims@1.7.1/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+	"imports": {
+		"three": "https://unpkg.com/three@0.151.2/build/three.module.js",
+		"three/addons/": "https://unpkg.com/three@0.151.2/examples/jsm/"
+	}
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import CameraControls from './dist/camera-controls.module.js';
 CameraControls.install( { THREE: THREE } );
 
-const width  = window.innerWidth;
+const width = window.innerWidth;
 const height = window.innerHeight;
 const clock = new THREE.Clock();
-const scene  = new THREE.Scene();
+const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera( 60, width / height, 0.01, 100 );
 camera.position.set( 0, 0, 5 );
 const renderer = new THREE.WebGLRenderer();
@@ -96,6 +106,12 @@ renderer.render( scene, camera );
 	}
 
 } )();
+
+// make variable available to browser console
+globalThis.THREE = THREE;
+globalThis.camera = camera;
+globalThis.cameraControls = cameraControls;
+globalThis.mesh = mesh;
 </script>
 
 </body>

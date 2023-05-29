@@ -1,6 +1,7 @@
 import type * as _THREE from 'three';
 import {
 	THREESubset,
+	Ref,
 	MOUSE_BUTTON,
 	ACTION,
 	PointerInput,
@@ -16,21 +17,26 @@ import {
 	PI_HALF,
 } from './constants';
 import {
+	DEG2RAD,
+	clamp,
 	approxZero,
 	approxEquals,
 	roundToStep,
 	infinityToMaxNumber,
 	maxNumberToInfinity,
+	smoothDamp,
+	smoothDampVec3,
 } from './utils/math-utils';
 import { extractClientCoordFromEvent } from './utils/extractClientCoordFromEvent';
 import { notSupportedInOrthographicCamera } from './utils/notSupportedInOrthographicCamera';
-import { quatInvertCompat } from './utils/quatInvertCompat';
 import { EventDispatcher, Listener } from './EventDispatcher';
+
+const VERSION = '__VERSION'; // will be replaced with `version` in package.json during the build process.
+const TOUCH_DOLLY_FACTOR = 1 / 8;
 
 const isBrowser = typeof window !== 'undefined';
 const isMac = isBrowser && /Mac/.test( navigator.platform );
-const isPointerEventsNotSupported = ! ( isBrowser && 'PointerEvent' in window ); // Safari 12 does not support PointerEvents API
-const TOUCH_DOLLY_FACTOR = 1 / 8;
+const isPointerEventsNotSupported = ! ( isBrowser && 'PointerEvent' in window ); // macOS Safari 12 does not support PointerEvents API
 
 let THREE: THREESubset;
 let _ORIGIN: _THREE.Vector3;
@@ -91,10 +97,6 @@ export class CameraControls extends EventDispatcher {
 	 * 	Box3      : Box3,
 	 * 	Sphere    : Sphere,
 	 * 	Raycaster : Raycaster,
-	 * 	MathUtils : {
-	 * 		DEG2RAD: MathUtils.DEG2RAD,
-	 * 		clamp: MathUtils.clamp,
-	 * 	},
 	 * };
 
 	 * CameraControls.install( { THREE: subsetOfTHREE } );
@@ -139,8 +141,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Minimum vertical angle in radians.
-	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.
+	 * Minimum vertical angle in radians.  
+	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.  
 	 * The default value is `0`.
 	 *
 	 * e.g.
@@ -152,8 +154,8 @@ export class CameraControls extends EventDispatcher {
 	minPolarAngle = 0; // radians
 
 	/**
-	 * Maximum vertical angle in radians.
-	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.
+	 * Maximum vertical angle in radians.  
+	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.  
 	 * The default value is `Math.PI`.
 	 *
 	 * e.g.
@@ -165,8 +167,8 @@ export class CameraControls extends EventDispatcher {
 	maxPolarAngle = Math.PI; // radians
 
 	/**
-	 * Minimum horizontal angle in radians.
-	 * The angle has to be less than `.maxAzimuthAngle`.
+	 * Minimum horizontal angle in radians.  
+	 * The angle has to be less than `.maxAzimuthAngle`.  
 	 * The default value is `- Infinity`.
 	 *
 	 * e.g.
@@ -178,8 +180,8 @@ export class CameraControls extends EventDispatcher {
 	minAzimuthAngle = - Infinity; // radians
 
 	/**
-	 * Maximum horizontal angle in radians.
-	 * The angle has to be greater than `.minAzimuthAngle`.
+	 * Maximum horizontal angle in radians.  
+	 * The angle has to be greater than `.minAzimuthAngle`.  
 	 * The default value is `Infinity`.
 	 *
 	 * e.g.
@@ -192,23 +194,23 @@ export class CameraControls extends EventDispatcher {
 
 	// How far you can dolly in and out ( PerspectiveCamera only )
 	/**
-	 * Minimum distance for dolly. The value must be higher than `0`.
+	 * Minimum distance for dolly. The value must be higher than `0`. Default is `Number.EPSILON`.
 	 * PerspectiveCamera only.
 	 * @category Properties
 	 */
-	minDistance = 0;
+	minDistance = Number.EPSILON;
 	/**
-	 * Maximum distance for dolly. The value must be higher than `minDistance`.
+	 * Maximum distance for dolly. The value must be higher than `minDistance`. Default is `Infinity`.
 	 * PerspectiveCamera only.
 	 * @category Properties
 	 */
 	maxDistance = Infinity;
 	/**
-	 * `true` to enable Infinity Dolly.
+	 * `true` to enable Infinity Dolly.  
 	 * When the Dolly distance is less than the `minDistance`, radius of the sphere will be set `minDistance` automatically.
 	 * @category Properties
 	 */
-	infinityDolly = false;
+	protected _infinityDolly = false;
 
 	/**
 	 * Minimum camera zoom.
@@ -222,19 +224,23 @@ export class CameraControls extends EventDispatcher {
 	maxZoom = Infinity;
 
 	/**
-	 * The damping inertia.
-	 * The value must be between `Math.EPSILON` to `1` inclusive.
-	 * Setting `1` to disable smooth transitions.
+	 * Approximate time in seconds to reach the target. A smaller value will reach the target faster.
 	 * @category Properties
 	 */
-	dampingFactor = 0.05;
+	smoothTime = 0.25;
+
 	/**
-	 * The damping inertia while dragging.
-	 * The value must be between `Math.EPSILON` to `1` inclusive.
-	 * Setting `1` to disable smooth transitions.
+	 * the smoothTime while dragging
 	 * @category Properties
 	 */
-	draggingDampingFactor = 0.25;
+	draggingSmoothTime = 0.125;
+
+	/**
+	 * Max transition speed in unit-per-seconds
+	 * @category Properties
+	 */
+	maxSpeed = Infinity;
+
 	/**
 	 * Speed of azimuth (horizontal) rotation.
 	 * @category Properties
@@ -250,6 +256,13 @@ export class CameraControls extends EventDispatcher {
 	 * @category Properties
 	 */
 	dollySpeed = 1.0;
+
+	/**
+	 * `true` to invert direction when dollying or zooming via drag
+	 * @category Properties
+	 */
+	dollyDragInverted = false;
+
 	/**
 	 * Speed of drag for truck and pedestal.
 	 * @category Properties
@@ -283,7 +296,7 @@ export class CameraControls extends EventDispatcher {
 	restThreshold = 0.01;
 
 	/**
-	 * An array of Meshes to collide with camera.
+	 * An array of Meshes to collide with camera.  
 	 * Be aware colliderMeshes may decrease performance. The collision test uses 4 raycasters from the camera since the near plane has 4 corners.
 	 * @category Properties
 	 */
@@ -315,8 +328,8 @@ export class CameraControls extends EventDispatcher {
 	 * | fingers to assign     | behavior |
 	 * | --------------------- | -------- |
 	 * | `touches.one` | `CameraControls.ACTION.TOUCH_ROTATE`* \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.DOLLY` | `CameraControls.ACTION.ZOOM` | `CameraControls.ACTION.NONE` |
-	 * | `touches.two` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_DOLLY` \| `ACTION.TOUCH_ZOOM` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
-	 * | `touches.three` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
+	 * | `touches.two` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_DOLLY_ROTATE` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_ZOOM_ROTATE` \| `ACTION.TOUCH_DOLLY` \| `ACTION.TOUCH_ZOOM` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
+	 * | `touches.three` | `ACTION.TOUCH_DOLLY_TRUCK` \| `ACTION.TOUCH_DOLLY_OFFSET` \| `ACTION.TOUCH_DOLLY_ROTATE` \| `ACTION.TOUCH_ZOOM_TRUCK` \| `ACTION.TOUCH_ZOOM_OFFSET` \| `ACTION.TOUCH_ZOOM_ROTATE` \| `CameraControls.ACTION.TOUCH_ROTATE` \| `CameraControls.ACTION.TOUCH_TRUCK` \| `CameraControls.ACTION.TOUCH_OFFSET` \| `CameraControls.ACTION.NONE` |
 	 *
 	 * - \* is the default.
 	 * - The default of `touches.two` and `touches.three` is:
@@ -333,13 +346,27 @@ export class CameraControls extends EventDispatcher {
 	// cancel will be overwritten in the constructor.
 	cancel: () => void = () => {};
 
+	/**
+	 * Still an experimental feature.
+	 * This could change at any time.
+	 * @category Methods
+	 */
+	lockPointer: () => void;
+
+	/**
+	 * Still an experimental feature.
+	 * This could change at any time.
+	 * @category Methods
+	 */
+	unlockPointer: () => void;
+
 	protected _enabled = true;
 	protected _camera: _THREE.PerspectiveCamera | _THREE.OrthographicCamera;
 	protected _yAxisUpSpace: _THREE.Quaternion;
 	protected _yAxisUpSpaceInverse: _THREE.Quaternion;
 	protected _state: ACTION = ACTION.NONE;
 
-	protected _domElement: HTMLElement;
+	protected _domElement?: HTMLElement;
 	protected _viewport: _THREE.Vector4 | null = null;
 
 	// the location of focus, where the object orbits around
@@ -352,17 +379,19 @@ export class CameraControls extends EventDispatcher {
 	// rotation and dolly distance
 	protected _spherical: _THREE.Spherical;
 	protected _sphericalEnd: _THREE.Spherical;
+	protected _lastDistance: number;
 
 	protected _zoom: number;
 	protected _zoomEnd: number;
+	protected _lastZoom: number;
 
 	// reset
+	protected _cameraUp0: _THREE.Vector3;
 	protected _target0: _THREE.Vector3;
 	protected _position0: _THREE.Vector3;
 	protected _zoom0: number;
 	protected _focalOffset0: _THREE.Vector3;
 
-	protected _dollyControlAmount = 0;
 	protected _dollyControlCoord: _THREE.Vector2;
 
 	// collisionTest uses nearPlane. ( PerspectiveCamera only )
@@ -378,7 +407,26 @@ export class CameraControls extends EventDispatcher {
 	protected _updatedLastTime = false;
 	protected _elementRect = new DOMRect();
 
+	protected _isDragging = false;
 	protected _activePointers: PointerInput[] = [];
+	protected _lockedPointer: PointerInput | null = null;
+
+	// Use draggingSmoothTime over smoothTime while true.
+	// set automatically true on user-dragging start.
+	// set automatically false on programmable methods call.
+	protected _isUserControllingRotate: boolean = false;
+	protected _isUserControllingDolly: boolean = false;
+	protected _isUserControllingTruck: boolean = false;
+	protected _isUserControllingOffset: boolean = false;
+	protected _isUserControllingZoom: boolean = false;
+
+	// velocities for smoothDamp
+	protected _thetaVelocity: Ref = { value: 0 };
+	protected _phiVelocity: Ref = { value: 0 };
+	protected _radiusVelocity: Ref = { value: 0 };
+	protected _targetVelocity: _THREE.Vector3 = new THREE.Vector3();
+	protected _focalOffsetVelocity: _THREE.Vector3 = new THREE.Vector3();
+	protected _zoomVelocity: Ref = { value: 0 };
 
 	/**
 	 * Creates a `CameraControls` instance.
@@ -399,7 +447,7 @@ export class CameraControls extends EventDispatcher {
 	 */
 	constructor(
 		camera: _THREE.PerspectiveCamera | _THREE.OrthographicCamera,
-		domElement: HTMLElement,
+		domElement?: HTMLElement,
 	) {
 
 		super();
@@ -413,13 +461,8 @@ export class CameraControls extends EventDispatcher {
 
 		this._camera = camera;
 		this._yAxisUpSpace = new THREE.Quaternion().setFromUnitVectors( this._camera.up, _AXIS_Y );
-		this._yAxisUpSpaceInverse = quatInvertCompat( this._yAxisUpSpace.clone() );
+		this._yAxisUpSpaceInverse = this._yAxisUpSpace.clone().invert();
 		this._state = ACTION.NONE;
-
-		this._domElement = domElement;
-		this._domElement.style.touchAction = 'none';
-		this._domElement.style.userSelect = 'none';
-		this._domElement.style.webkitUserSelect = 'none';
 
 		// the location
 		this._target = new THREE.Vector3();
@@ -431,9 +474,11 @@ export class CameraControls extends EventDispatcher {
 		// rotation
 		this._spherical = new THREE.Spherical().setFromVector3( _v3A.copy( this._camera.position ).applyQuaternion( this._yAxisUpSpace ) );
 		this._sphericalEnd = this._spherical.clone();
+		this._lastDistance = this._spherical.radius;
 
 		this._zoom = this._camera.zoom;
 		this._zoomEnd = this._zoom;
+		this._lastZoom = this._zoom;
 
 		// collisionTest uses nearPlane.s
 		this._nearPlaneCorners = [
@@ -451,12 +496,12 @@ export class CameraControls extends EventDispatcher {
 		);
 
 		// reset
+		this._cameraUp0 = this._camera.up.clone();
 		this._target0 = this._target.clone();
 		this._position0 = this._camera.position.clone();
 		this._zoom0 = this._zoom;
 		this._focalOffset0 = this._focalOffset.clone();
 
-		this._dollyControlAmount = 0;
 		this._dollyControlCoord = new THREE.Vector2();
 
 		// configs
@@ -479,275 +524,213 @@ export class CameraControls extends EventDispatcher {
 			three: ACTION.TOUCH_TRUCK,
 		};
 
-		if ( this._domElement ) {
+		const dragStartPosition = new THREE.Vector2() as _THREE.Vector2;
+		const lastDragPosition = new THREE.Vector2() as _THREE.Vector2;
+		const dollyStart = new THREE.Vector2() as _THREE.Vector2;
 
-			const dragStartPosition = new THREE.Vector2() as _THREE.Vector2;
-			const lastDragPosition = new THREE.Vector2() as _THREE.Vector2;
-			const dollyStart = new THREE.Vector2() as _THREE.Vector2;
+		const onPointerDown = ( event: PointerEvent ) => {
 
-			const onPointerDown = ( event: PointerEvent ) => {
+			if ( ! this._enabled || ! this._domElement ) return;
 
-				if ( ! this._enabled ) return;
+			// Don't call `event.preventDefault()` on the pointerdown event
+			// to keep receiving pointermove evens outside dragging iframe
+			// https://taye.me/blog/tips/2015/11/16/mouse-drag-outside-iframe/
 
-				// Don't call `event.preventDefault()` on the pointerdown event
-				// to keep receiving pointermove evens outside dragging iframe
-				// https://taye.me/blog/tips/2015/11/16/mouse-drag-outside-iframe/
+			const mouseButton =
+				event.pointerType !== 'mouse' ? null :
+				( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.LEFT :
+				( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ? MOUSE_BUTTON.MIDDLE :
+				( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ? MOUSE_BUTTON.RIGHT :
+				null;
 
-				const pointer = {
-					pointerId: event.pointerId,
-					clientX: event.clientX,
-					clientY: event.clientY,
-					deltaX: 0,
-					deltaY: 0,
-				};
-				this._activePointers.push( pointer );
+			if ( mouseButton !== null ) {
 
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+				const zombiePointer = this._findPointerByMouseButton( mouseButton );
+				zombiePointer && this._disposePointer( zombiePointer );
 
-				this._domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove, { passive: false } );
-				this._domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
+			}
 
-				startDragging( event );
+			if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT && this._lockedPointer ) return;
 
+			const pointer = {
+				pointerId: event.pointerId,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				deltaX: 0,
+				deltaY: 0,
+				mouseButton,
 			};
+			this._activePointers.push( pointer );
 
-			const onMouseDown = ( event: MouseEvent ) => {
+			// eslint-disable-next-line no-undef
+			this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+			this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
 
-				if ( ! this._enabled ) return;
+			this._domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove, { passive: false } );
+			this._domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
 
-				const pointer = {
-					pointerId: 0,
-					clientX: event.clientX,
-					clientY: event.clientY,
-					deltaX: 0,
-					deltaY: 0,
-				};
-				this._activePointers.push( pointer );
+			this._isDragging = true;
+			startDragging( event );
 
-				// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
-				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
+		};
 
-				this._domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
-				this._domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
+		const onMouseDown = ( event: MouseEvent ) => {
 
-				startDragging( event );
+			if ( ! this._enabled || ! this._domElement || this._lockedPointer ) return;
 
+			const mouseButton =
+				( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.LEFT :
+				( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ? MOUSE_BUTTON.MIDDLE :
+				( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ? MOUSE_BUTTON.RIGHT :
+				null;
+
+			if ( mouseButton !== null ) {
+
+				const zombiePointer = this._findPointerByMouseButton( mouseButton );
+				zombiePointer && this._disposePointer( zombiePointer );
+
+			}
+
+			const pointer = {
+				pointerId: 1,
+				clientX: event.clientX,
+				clientY: event.clientY,
+				deltaX: 0,
+				deltaY: 0,
+				mouseButton:
+					( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.LEFT :
+					( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.MIDDLE :
+					( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.RIGHT :
+					null,
 			};
+			this._activePointers.push( pointer );
 
-			const onTouchStart = ( event:TouchEvent ): void => {
+			// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
+			// eslint-disable-next-line no-undef
+			this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+			this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
 
-				if ( ! this._enabled ) return;
+			this._domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
+			this._domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
 
-				event.preventDefault();
+			this._isDragging = true;
+			startDragging( event );
 
-				Array.prototype.forEach.call( event.changedTouches, ( touch ) => {
+		};
 
-					const pointer = {
-						pointerId: touch.identifier,
-						clientX: touch.clientX,
-						clientY: touch.clientY,
-						deltaX: 0,
-						deltaY: 0,
-					};
-					this._activePointers.push( pointer );
+		const onPointerMove = ( event: PointerEvent ) => {
 
-				} );
+			if ( event.cancelable ) event.preventDefault();
 
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'touchmove', onTouchMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'touchend', onTouchEnd );
+			const pointerId = event.pointerId;
+			const pointer = this._lockedPointer || this._findPointerById( pointerId );
 
-				this._domElement.ownerDocument.addEventListener( 'touchmove', onTouchMove, { passive: false } );
-				this._domElement.ownerDocument.addEventListener( 'touchend', onTouchEnd );
+			if ( ! pointer ) return;
 
-				startDragging( event );
+			pointer.clientX = event.clientX;
+			pointer.clientY = event.clientY;
+			pointer.deltaX = event.movementX;
+			pointer.deltaY = event.movementY;
 
-			};
+			this._state = 0;
 
-			const onPointerMove = ( event: PointerEvent ) => {
+			if ( event.pointerType === 'touch' ) {
 
-				if ( event.cancelable ) event.preventDefault();
+				switch ( this._activePointers.length ) {
 
-				const pointerId = event.pointerId;
-				const pointer = this._findPointerById( pointerId );
+					case 1:
 
-				if ( ! pointer ) return;
+						this._state = this.touches.one;
+						break;
 
-				pointer.clientX = event.clientX;
-				pointer.clientY = event.clientY;
-				pointer.deltaX = event.movementX;
-				pointer.deltaY = event.movementY;
+					case 2:
 
-				if ( event.pointerType === 'touch' ) {
+						this._state = this.touches.two;
+						break;
 
-					switch ( this._activePointers.length ) {
+					case 3:
 
-						case 1:
-
-							this._state = this.touches.one;
-							break;
-
-						case 2:
-
-							this._state = this.touches.two;
-							break;
-
-						case 3:
-
-							this._state = this.touches.three;
-							break;
-
-					}
-
-				} else {
-
-					this._state = 0;
-
-					if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
-
-						this._state = this._state | this.mouseButtons.left;
-
-					}
-
-					if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
-
-						this._state = this._state | this.mouseButtons.middle;
-
-					}
-
-					if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
-
-						this._state = this._state | this.mouseButtons.right;
-
-					}
+						this._state = this.touches.three;
+						break;
 
 				}
 
-				dragging();
+			} else {
 
-			};
-
-			const onMouseMove = ( event: MouseEvent ) => {
-
-				const pointer = this._findPointerById( 0 );
-
-				if ( ! pointer ) return;
-
-				pointer.clientX = event.clientX;
-				pointer.clientY = event.clientY;
-				pointer.deltaX = event.movementX;
-				pointer.deltaY = event.movementY;
-
-				this._state = 0;
-
-				if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
+				if (
+					( ! this._isDragging && this._lockedPointer ) ||
+					this._isDragging && ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT
+				) {
 
 					this._state = this._state | this.mouseButtons.left;
 
 				}
 
-				if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
+				if ( this._isDragging && ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
 
 					this._state = this._state | this.mouseButtons.middle;
 
 				}
 
-				if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
+				if ( this._isDragging && ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
 
 					this._state = this._state | this.mouseButtons.right;
 
 				}
 
-				dragging();
+			}
 
-			};
+			dragging();
 
-			const onTouchMove = ( event: TouchEvent ) => {
+		};
 
-				if ( event.cancelable ) event.preventDefault();
+		const onMouseMove = ( event: MouseEvent ) => {
 
-				Array.prototype.forEach.call( event.changedTouches, ( touch: Touch ) => {
+			const pointer = this._lockedPointer || this._findPointerById( 1 );
 
-					const pointerId = touch.identifier;
-					const pointer = this._findPointerById( pointerId );
+			if ( ! pointer ) return;
 
-					if ( ! pointer ) return;
+			pointer.clientX = event.clientX;
+			pointer.clientY = event.clientY;
+			pointer.deltaX = event.movementX;
+			pointer.deltaY = event.movementY;
 
-					pointer.clientX = touch.clientX;
-					pointer.clientY = touch.clientY;
-					// touch event does not have movementX and movementY.
+			this._state = 0;
 
-				} );
+			if (
+				this._lockedPointer ||
+				( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT
+			) {
 
-				dragging();
+				this._state = this._state | this.mouseButtons.left;
 
-			};
+			}
 
-			const onPointerUp = ( event: PointerEvent ) => {
+			if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
 
-				const pointerId = event.pointerId;
-				const pointer = this._findPointerById( pointerId );
-				pointer && this._activePointers.splice( this._activePointers.indexOf( pointer ), 1 );
+				this._state = this._state | this.mouseButtons.middle;
 
-				if ( event.pointerType === 'touch' ) {
+			}
 
-					switch ( this._activePointers.length ) {
+			if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
 
-						case 0:
+				this._state = this._state | this.mouseButtons.right;
 
-							this._state = ACTION.NONE;
-							break;
+			}
 
-						case 1:
+			dragging();
 
-							this._state = this.touches.one;
-							break;
+		};
 
-						case 2:
+		const onPointerUp = ( event: PointerEvent ) => {
 
-							this._state = this.touches.two;
-							break;
+			const pointer = this._findPointerById( event.pointerId );
 
-						case 3:
+			if ( pointer && pointer === this._lockedPointer ) return;
 
-							this._state = this.touches.three;
-							break;
+			pointer && this._disposePointer( pointer );
 
-					}
-
-				} else {
-
-					this._state = ACTION.NONE;
-
-				}
-
-				endDragging();
-
-			};
-
-			const onMouseUp = () => {
-
-				const pointer = this._findPointerById( 0 );
-				pointer && this._activePointers.splice( this._activePointers.indexOf( pointer ), 1 );
-				this._state = ACTION.NONE;
-
-				endDragging();
-
-			};
-
-			const onTouchEnd = ( event: TouchEvent ) => {
-
-				Array.prototype.forEach.call( event.changedTouches, ( touch: Touch ) => {
-
-					const pointerId = touch.identifier;
-					const pointer = this._findPointerById( pointerId );
-					pointer && this._activePointers.splice( this._activePointers.indexOf( pointer ), 1 );
-
-				} );
+			if ( event.pointerType === 'touch' ) {
 
 				switch ( this._activePointers.length ) {
 
@@ -773,321 +756,547 @@ export class CameraControls extends EventDispatcher {
 
 				}
 
-				endDragging();
+			} else {
 
-			};
+				this._state = ACTION.NONE;
 
-			let lastScrollTimeStamp = - 1;
+			}
 
-			const onMouseWheel = ( event: WheelEvent ): void => {
+			endDragging();
 
-				if ( ! this._enabled || this.mouseButtons.wheel === ACTION.NONE ) return;
+		};
 
-				event.preventDefault();
+		const onMouseUp = () => {
 
-				if (
-					this.dollyToCursor ||
-					this.mouseButtons.wheel === ACTION.ROTATE ||
-					this.mouseButtons.wheel === ACTION.TRUCK
-				) {
+			const pointer = this._findPointerById( 1 );
 
-					const now = performance.now();
+			if ( pointer && pointer === this._lockedPointer ) return;
 
-					// only need to fire this at scroll start.
-					if ( lastScrollTimeStamp - now < 1000 ) this._getClientRect( this._elementRect );
-					lastScrollTimeStamp = now;
+			pointer && this._disposePointer( pointer );
 
-				}
+			this._state = ACTION.NONE;
 
-				// Ref: https://github.com/cedricpinson/osgjs/blob/00e5a7e9d9206c06fdde0436e1d62ab7cb5ce853/sources/osgViewer/input/source/InputSourceMouse.js#L89-L103
-				const deltaYFactor = isMac ? - 1 : - 3;
-				const delta = ( event.deltaMode === 1 ) ? event.deltaY / deltaYFactor : event.deltaY / ( deltaYFactor * 10 );
-				const x = this.dollyToCursor ? ( event.clientX - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
-				const y = this.dollyToCursor ? ( event.clientY - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
+			endDragging();
 
-				switch ( this.mouseButtons.wheel ) {
+		};
 
-					case ACTION.ROTATE: {
+		let lastScrollTimeStamp = - 1;
 
-						this._rotateInternal( event.deltaX, event.deltaY );
-						break;
+		const onMouseWheel = ( event: WheelEvent ): void => {
 
-					}
+			if ( ! this._enabled || this.mouseButtons.wheel === ACTION.NONE ) return;
 
-					case ACTION.TRUCK: {
+			event.preventDefault();
 
-						this._truckInternal( event.deltaX, event.deltaY, false );
-						break;
+			if (
+				this.dollyToCursor ||
+				this.mouseButtons.wheel === ACTION.ROTATE ||
+				this.mouseButtons.wheel === ACTION.TRUCK
+			) {
 
-					}
+				const now = performance.now();
 
-					case ACTION.OFFSET: {
+				// only need to fire this at scroll start.
+				if ( lastScrollTimeStamp - now < 1000 ) this._getClientRect( this._elementRect );
+				lastScrollTimeStamp = now;
 
-						this._truckInternal( event.deltaX, event.deltaY, true );
-						break;
+			}
 
-					}
+			// Ref: https://github.com/cedricpinson/osgjs/blob/00e5a7e9d9206c06fdde0436e1d62ab7cb5ce853/sources/osgViewer/input/source/InputSourceMouse.js#L89-L103
+			const deltaYFactor = isMac ? - 1 : - 3;
+			const delta = ( event.deltaMode === 1 ) ? event.deltaY / deltaYFactor : event.deltaY / ( deltaYFactor * 10 );
+			const x = this.dollyToCursor ? ( event.clientX - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
+			const y = this.dollyToCursor ? ( event.clientY - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
 
-					case ACTION.DOLLY: {
+			switch ( this.mouseButtons.wheel ) {
 
-						this._dollyInternal( - delta, x, y );
-						break;
+				case ACTION.ROTATE: {
 
-					}
-
-					case ACTION.ZOOM: {
-
-						this._zoomInternal( - delta, x, y );
-						break;
-
-					}
+					this._rotateInternal( event.deltaX, event.deltaY );
+					this._isUserControllingRotate = true;
+					break;
 
 				}
 
-				this.dispatchEvent( { type: 'control' } );
+				case ACTION.TRUCK: {
 
-			};
-
-			const onContextMenu = ( event: Event ): void => {
-
-				if ( ! this._enabled ) return;
-
-				event.preventDefault();
-
-			};
-
-			const startDragging = ( event: PointerEvent | MouseEvent | TouchEvent ): void => {
-
-				if ( ! this._enabled ) return;
-
-				extractClientCoordFromEvent( this._activePointers, _v2 );
-
-				this._getClientRect( this._elementRect );
-				dragStartPosition.copy( _v2 );
-				lastDragPosition.copy( _v2 );
-
-				const isMultiTouch = this._activePointers.length >= 2;
-
-				if ( isMultiTouch ) {
-
-					// 2 finger pinch
-					const dx = _v2.x - this._activePointers[ 1 ].clientX;
-					const dy = _v2.y - this._activePointers[ 1 ].clientY;
-					const distance = Math.sqrt( dx * dx + dy * dy );
-
-					dollyStart.set( 0, distance );
-
-					// center coords of 2 finger truck
-					const x = ( this._activePointers[ 0 ].clientX + this._activePointers[ 1 ].clientX ) * 0.5;
-					const y = ( this._activePointers[ 0 ].clientY + this._activePointers[ 1 ].clientY ) * 0.5;
-
-					lastDragPosition.set( x, y );
+					this._truckInternal( event.deltaX, event.deltaY, false );
+					this._isUserControllingTruck = true;
+					break;
 
 				}
 
-				if (
-					'touches' in event ||
-					'pointerType' in event && event.pointerType === 'touch'
-				) {
+				case ACTION.OFFSET: {
 
-					switch ( this._activePointers.length ) {
+					this._truckInternal( event.deltaX, event.deltaY, true );
+					this._isUserControllingOffset = true;
+					break;
 
-						case 1:
+				}
 
-							this._state = this.touches.one;
-							break;
+				case ACTION.DOLLY: {
 
-						case 2:
+					this._dollyInternal( - delta, x, y );
+					this._isUserControllingDolly = true;
+					break;
 
-							this._state = this.touches.two;
-							break;
+				}
 
-						case 3:
+				case ACTION.ZOOM: {
 
-							this._state = this.touches.three;
-							break;
+					this._zoomInternal( - delta, x, y );
+					this._isUserControllingZoom = true;
+					break;
 
-					}
+				}
+
+			}
+
+			this.dispatchEvent( { type: 'control' } );
+
+		};
+
+		const onContextMenu = ( event: Event ): void => {
+
+			if ( ! this._domElement || ! this._enabled ) return;
+
+			// contextmenu event is fired right after pointerdown/mousedown.
+			// remove attached handlers and active pointer, if interrupted by contextmenu.
+			if ( this.mouseButtons.right === CameraControls.ACTION.NONE ) {
+
+				const pointerId =
+					event instanceof PointerEvent ? event.pointerId :
+					event instanceof MouseEvent ? 0 :
+					0;
+
+				const pointer = this._findPointerById( pointerId );
+				pointer && this._disposePointer( pointer );
+
+				// eslint-disable-next-line no-undef
+				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
+
+				return;
+
+			}
+
+			event.preventDefault();
+
+		};
+
+		const startDragging = ( event?: PointerEvent | MouseEvent ): void => {
+
+			if ( ! this._enabled ) return;
+
+			extractClientCoordFromEvent( this._activePointers, _v2 );
+
+			this._getClientRect( this._elementRect );
+			dragStartPosition.copy( _v2 );
+			lastDragPosition.copy( _v2 );
+
+			const isMultiTouch = this._activePointers.length >= 2;
+
+			if ( isMultiTouch ) {
+
+				// 2 finger pinch
+				const dx = _v2.x - this._activePointers[ 1 ].clientX;
+				const dy = _v2.y - this._activePointers[ 1 ].clientY;
+				const distance = Math.sqrt( dx * dx + dy * dy );
+
+				dollyStart.set( 0, distance );
+
+				// center coords of 2 finger truck
+				const x = ( this._activePointers[ 0 ].clientX + this._activePointers[ 1 ].clientX ) * 0.5;
+				const y = ( this._activePointers[ 0 ].clientY + this._activePointers[ 1 ].clientY ) * 0.5;
+
+				lastDragPosition.set( x, y );
+
+			}
+
+			this._state = 0;
+
+			if ( ! event ) {
+
+				if ( this._lockedPointer ) this._state = this._state | this.mouseButtons.left;
+
+			} else if ( 'pointerType' in event && event.pointerType === 'touch' ) {
+
+				switch ( this._activePointers.length ) {
+
+					case 1:
+
+						this._state = this.touches.one;
+						break;
+
+					case 2:
+
+						this._state = this.touches.two;
+						break;
+
+					case 3:
+
+						this._state = this.touches.three;
+						break;
+
+				}
+
+			} else {
+
+				if ( ! this._lockedPointer && ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
+
+					this._state = this._state | this.mouseButtons.left;
+
+				}
+
+				if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
+
+					this._state = this._state | this.mouseButtons.middle;
+
+				}
+
+				if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
+
+					this._state = this._state | this.mouseButtons.right;
+
+				}
+
+			}
+
+			// stop current movement on drag start
+			if (
+				( this._state & ACTION.ROTATE ) === ACTION.ROTATE ||
+				( this._state & ACTION.TOUCH_ROTATE ) === ACTION.TOUCH_ROTATE ||
+				( this._state & ACTION.TOUCH_DOLLY_ROTATE ) === ACTION.TOUCH_DOLLY_ROTATE ||
+				( this._state & ACTION.TOUCH_ZOOM_ROTATE ) === ACTION.TOUCH_ZOOM_ROTATE
+			) {
+
+				this._sphericalEnd.theta = this._spherical.theta;
+				this._sphericalEnd.phi = this._spherical.phi;
+				this._thetaVelocity.value = 0;
+				this._phiVelocity.value = 0;
+
+			}
+
+			if (
+				( this._state & ACTION.TRUCK ) === ACTION.TRUCK ||
+				( this._state & ACTION.TOUCH_TRUCK ) === ACTION.TOUCH_TRUCK ||
+				( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+				( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK
+			) {
+
+				this._targetEnd.copy( this._target );
+				this._targetVelocity.set( 0, 0, 0 );
+
+			}
+
+			if (
+				( this._state & ACTION.DOLLY ) === ACTION.DOLLY ||
+				( this._state & ACTION.TOUCH_DOLLY ) === ACTION.TOUCH_DOLLY ||
+				( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+				( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+				( this._state & ACTION.TOUCH_DOLLY_ROTATE ) === ACTION.TOUCH_DOLLY_ROTATE
+			) {
+
+				this._sphericalEnd.radius = this._spherical.radius;
+				this._radiusVelocity.value = 0;
+
+			}
+
+			if (
+				( this._state & ACTION.ZOOM ) === ACTION.ZOOM ||
+				( this._state & ACTION.TOUCH_ZOOM ) === ACTION.TOUCH_ZOOM ||
+				( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK ||
+				( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET ||
+				( this._state & ACTION.TOUCH_ZOOM_ROTATE ) === ACTION.TOUCH_ZOOM_ROTATE
+			) {
+
+				this._zoomEnd = this._zoom;
+				this._zoomVelocity.value = 0;
+
+			}
+
+			if (
+				( this._state & ACTION.OFFSET ) === ACTION.OFFSET ||
+				( this._state & ACTION.TOUCH_OFFSET ) === ACTION.TOUCH_OFFSET ||
+				( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+				( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
+			) {
+
+				this._focalOffsetEnd.copy( this._focalOffset );
+				this._focalOffsetVelocity.set( 0, 0, 0 );
+
+			}
+
+			this.dispatchEvent( { type: 'controlstart' } );
+
+		};
+
+		const dragging = (): void => {
+
+			if ( ! this._enabled ) return;
+
+			extractClientCoordFromEvent( this._activePointers, _v2 );
+
+			// When pointer lock is enabled clientX, clientY, screenX, and screenY remain 0.
+			// If pointer lock is enabled, use the Delta directory, and assume active-pointer is not multiple.
+			const isPointerLockActive = this._domElement && document.pointerLockElement === this._domElement;
+			const lockedPointer = isPointerLockActive ? this._lockedPointer || this._activePointers[ 0 ] : null;
+			const deltaX = lockedPointer ? - lockedPointer.deltaX : lastDragPosition.x - _v2.x;
+			const deltaY = lockedPointer ? - lockedPointer.deltaY : lastDragPosition.y - _v2.y;
+
+			lastDragPosition.copy( _v2 );
+
+			if (
+				( this._state & ACTION.ROTATE ) === ACTION.ROTATE ||
+				( this._state & ACTION.TOUCH_ROTATE ) === ACTION.TOUCH_ROTATE ||
+				( this._state & ACTION.TOUCH_DOLLY_ROTATE ) === ACTION.TOUCH_DOLLY_ROTATE ||
+				( this._state & ACTION.TOUCH_ZOOM_ROTATE ) === ACTION.TOUCH_ZOOM_ROTATE
+			) {
+
+				this._rotateInternal( deltaX, deltaY );
+				this._isUserControllingRotate = true;
+
+			}
+
+			if (
+				( this._state & ACTION.DOLLY ) === ACTION.DOLLY ||
+				( this._state & ACTION.ZOOM ) === ACTION.ZOOM
+			) {
+
+				const dollyX = this.dollyToCursor ? ( dragStartPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
+				const dollyY = this.dollyToCursor ? ( dragStartPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
+				const dollyDirection = this.dollyDragInverted ? - 1 : 1;
+
+				if ( ( this._state & ACTION.DOLLY ) === ACTION.DOLLY ) {
+
+					this._dollyInternal( dollyDirection * deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+					this._isUserControllingDolly = true;
 
 				} else {
 
-					this._state = 0;
-
-					if ( ( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ) {
-
-						this._state = this._state | this.mouseButtons.left;
-
-					}
-
-					if ( ( event.buttons & MOUSE_BUTTON.MIDDLE ) === MOUSE_BUTTON.MIDDLE ) {
-
-						this._state = this._state | this.mouseButtons.middle;
-
-					}
-
-					if ( ( event.buttons & MOUSE_BUTTON.RIGHT ) === MOUSE_BUTTON.RIGHT ) {
-
-						this._state = this._state | this.mouseButtons.right;
-
-					}
+					this._zoomInternal( dollyDirection * deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+					this._isUserControllingZoom = true;
 
 				}
 
-				this.dispatchEvent( { type: 'controlstart' } );
+			}
 
-			};
+			if (
+				( this._state & ACTION.TOUCH_DOLLY ) === ACTION.TOUCH_DOLLY ||
+				( this._state & ACTION.TOUCH_ZOOM ) === ACTION.TOUCH_ZOOM ||
+				( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+				( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK ||
+				( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+				( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET ||
+				( this._state & ACTION.TOUCH_DOLLY_ROTATE ) === ACTION.TOUCH_DOLLY_ROTATE ||
+				( this._state & ACTION.TOUCH_ZOOM_ROTATE ) === ACTION.TOUCH_ZOOM_ROTATE
+			) {
 
-			const dragging = (): void => {
+				const dx = _v2.x - this._activePointers[ 1 ].clientX;
+				const dy = _v2.y - this._activePointers[ 1 ].clientY;
+				const distance = Math.sqrt( dx * dx + dy * dy );
+				const dollyDelta = dollyStart.y - distance;
+				dollyStart.set( 0, distance );
 
-				if ( ! this._enabled ) return;
-
-				extractClientCoordFromEvent( this._activePointers, _v2 );
-
-				// When pointer lock is enabled clientX, clientY, screenX, and screenY remain 0.
-				// If pointer lock is enabled, use the Delta directory, and assume active-pointer is not multiple.
-				const isPointerLockActive = this._domElement && document.pointerLockElement === this._domElement;
-				const deltaX = isPointerLockActive ? - this._activePointers[ 0 ].deltaX : lastDragPosition.x - _v2.x;
-				const deltaY = isPointerLockActive ? - this._activePointers[ 0 ].deltaY : lastDragPosition.y - _v2.y;
-
-				lastDragPosition.copy( _v2 );
-
-				if (
-					( this._state & ACTION.ROTATE ) === ACTION.ROTATE ||
-					( this._state & ACTION.TOUCH_ROTATE ) === ACTION.TOUCH_ROTATE
-				) {
-
-					this._rotateInternal( deltaX, deltaY );
-
-				}
-
-				if (
-					( this._state & ACTION.DOLLY ) === ACTION.DOLLY ||
-					( this._state & ACTION.ZOOM ) === ACTION.ZOOM
-				) {
-
-					const dollyX = this.dollyToCursor ? ( dragStartPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
-					const dollyY = this.dollyToCursor ? ( dragStartPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
-					this._state === ACTION.DOLLY ?
-						this._dollyInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
-						this._zoomInternal( deltaY * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
-
-				}
+				const dollyX = this.dollyToCursor ? ( lastDragPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
+				const dollyY = this.dollyToCursor ? ( lastDragPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
 
 				if (
 					( this._state & ACTION.TOUCH_DOLLY ) === ACTION.TOUCH_DOLLY ||
-					( this._state & ACTION.TOUCH_ZOOM ) === ACTION.TOUCH_ZOOM ||
+					( this._state & ACTION.TOUCH_DOLLY_ROTATE ) === ACTION.TOUCH_DOLLY_ROTATE ||
 					( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
-					( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK ||
-					( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
-					( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
+					( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET
 				) {
 
-					const dx = _v2.x - this._activePointers[ 1 ].clientX;
-					const dy = _v2.y - this._activePointers[ 1 ].clientY;
-					const distance = Math.sqrt( dx * dx + dy * dy );
-					const dollyDelta = dollyStart.y - distance;
-					dollyStart.set( 0, distance );
+					this._dollyInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+					this._isUserControllingDolly = true;
 
-					const dollyX = this.dollyToCursor ? ( lastDragPosition.x - this._elementRect.x ) / this._elementRect.width  *   2 - 1 : 0;
-					const dollyY = this.dollyToCursor ? ( lastDragPosition.y - this._elementRect.y ) / this._elementRect.height * - 2 + 1 : 0;
+				} else {
 
-					this._state === ACTION.TOUCH_DOLLY ||
-					this._state === ACTION.TOUCH_DOLLY_TRUCK ||
-					this._state === ACTION.TOUCH_DOLLY_OFFSET ?
-						this._dollyInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY ) :
-						this._zoomInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+					this._zoomInternal( dollyDelta * TOUCH_DOLLY_FACTOR, dollyX, dollyY );
+					this._isUserControllingZoom = true;
 
 				}
 
-				if (
-					( this._state & ACTION.TRUCK ) === ACTION.TRUCK ||
-					( this._state & ACTION.TOUCH_TRUCK ) === ACTION.TOUCH_TRUCK ||
-					( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
-					( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK
-				) {
+			}
 
-					this._truckInternal( deltaX, deltaY, false );
+			if (
+				( this._state & ACTION.TRUCK ) === ACTION.TRUCK ||
+				( this._state & ACTION.TOUCH_TRUCK ) === ACTION.TOUCH_TRUCK ||
+				( this._state & ACTION.TOUCH_DOLLY_TRUCK ) === ACTION.TOUCH_DOLLY_TRUCK ||
+				( this._state & ACTION.TOUCH_ZOOM_TRUCK ) === ACTION.TOUCH_ZOOM_TRUCK
+			) {
 
-				}
+				this._truckInternal( deltaX, deltaY, false );
+				this._isUserControllingTruck = true;
 
-				if (
-					( this._state & ACTION.OFFSET ) === ACTION.OFFSET ||
-					( this._state & ACTION.TOUCH_OFFSET ) === ACTION.TOUCH_OFFSET ||
-					( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
-					( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
-				) {
+			}
 
-					this._truckInternal( deltaX, deltaY, true );
+			if (
+				( this._state & ACTION.OFFSET ) === ACTION.OFFSET ||
+				( this._state & ACTION.TOUCH_OFFSET ) === ACTION.TOUCH_OFFSET ||
+				( this._state & ACTION.TOUCH_DOLLY_OFFSET ) === ACTION.TOUCH_DOLLY_OFFSET ||
+				( this._state & ACTION.TOUCH_ZOOM_OFFSET ) === ACTION.TOUCH_ZOOM_OFFSET
+			) {
 
-				}
+				this._truckInternal( deltaX, deltaY, true );
+				this._isUserControllingOffset = true;
 
-				this.dispatchEvent( { type: 'control' } );
+			}
 
+			this.dispatchEvent( { type: 'control' } );
+
+		};
+
+		const endDragging = (): void => {
+
+			extractClientCoordFromEvent( this._activePointers, _v2 );
+			lastDragPosition.copy( _v2 );
+
+			if (
+				this._activePointers.length === 0 ||
+				( this._activePointers.length === 1 && this._activePointers[ 0 ] === this._lockedPointer )
+			) {
+
+				this._isDragging = false;
+
+			}
+
+			if ( this._activePointers.length === 0 && this._domElement ) {
+
+				// eslint-disable-next-line no-undef
+				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
+
+				this.dispatchEvent( { type: 'controlend' } );
+
+			}
+
+		};
+
+		this.lockPointer = (): void => {
+
+			if ( ! this._enabled || ! this._domElement ) return;
+
+			this.cancel();
+
+			// Element.requestPointerLock is allowed to happen without any pointer active - create a faux one for compatibility with controls
+			this._lockedPointer = {
+				pointerId: - 1,
+				clientX: 0,
+				clientY: 0,
+				deltaX: 0,
+				deltaY: 0,
+				mouseButton: null,
 			};
+			this._activePointers.push( this._lockedPointer );
 
-			const endDragging = (): void => {
+			// eslint-disable-next-line no-undef
+			this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+			this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
 
-				extractClientCoordFromEvent( this._activePointers, _v2 );
-				lastDragPosition.copy( _v2 );
+			this._domElement.requestPointerLock();
+			this._domElement.ownerDocument.addEventListener( 'pointerlockchange', onPointerLockChange );
+			this._domElement.ownerDocument.addEventListener( 'pointerlockerror', onPointerLockError );
 
-				if ( this._activePointers.length === 0 ) {
+			this._domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove, { passive: false } );
+			this._domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
 
-					// eslint-disable-next-line no-undef
-					this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
-					this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+			startDragging();
 
-					// eslint-disable-next-line no-undef
-					this._domElement.ownerDocument.removeEventListener( 'touchmove', onTouchMove, { passive: false } as AddEventListenerOptions );
-					this._domElement.ownerDocument.removeEventListener( 'touchend', onTouchEnd );
+		};
 
-					this.dispatchEvent( { type: 'controlend' } );
+		this.unlockPointer = (): void => {
 
-				}
+			if ( this._lockedPointer !== null ) {
 
-			};
+				this._disposePointer( this._lockedPointer );
+				this._lockedPointer = null;
+
+			}
+
+			document.exitPointerLock();
+
+			this.cancel();
+
+			if ( ! this._domElement ) return;
+			this._domElement.ownerDocument.removeEventListener( 'pointerlockchange', onPointerLockChange );
+			this._domElement.ownerDocument.removeEventListener( 'pointerlockerror', onPointerLockError );
+
+		};
+
+		const onPointerLockChange = (): void => {
+
+			const isPointerLockActive = this._domElement && this._domElement.ownerDocument.pointerLockElement === this._domElement;
+			if ( ! isPointerLockActive ) this.unlockPointer();
+
+		};
+
+		const onPointerLockError = (): void => {
+
+			this.unlockPointer();
+
+		};
+
+		this._addAllEventListeners = ( domElement: HTMLElement ): void => {
+
+			this._domElement = domElement;
+
+			this._domElement.style.touchAction = 'none';
+			this._domElement.style.userSelect = 'none';
+			this._domElement.style.webkitUserSelect = 'none';
 
 			this._domElement.addEventListener( 'pointerdown', onPointerDown );
 			isPointerEventsNotSupported && this._domElement.addEventListener( 'mousedown', onMouseDown );
-			isPointerEventsNotSupported && this._domElement.addEventListener( 'touchstart', onTouchStart );
 			this._domElement.addEventListener( 'pointercancel', onPointerUp );
 			this._domElement.addEventListener( 'wheel', onMouseWheel, { passive: false } );
 			this._domElement.addEventListener( 'contextmenu', onContextMenu );
 
-			this._removeAllEventListeners = (): void => {
+		};
 
-				this._domElement.removeEventListener( 'pointerdown', onPointerDown );
-				this._domElement.removeEventListener( 'mousedown', onMouseDown );
-				this._domElement.removeEventListener( 'touchstart', onTouchStart );
-				this._domElement.removeEventListener( 'pointercancel', onPointerUp );
-				// https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/removeEventListener#matching_event_listeners_for_removal
-				// > it's probably wise to use the same values used for the call to `addEventListener()` when calling `removeEventListener()`
-				// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
-				// eslint-disable-next-line no-undef
-				this._domElement.removeEventListener( 'wheel', onMouseWheel, { passive: false } as AddEventListenerOptions );
-				this._domElement.removeEventListener( 'contextmenu', onContextMenu );
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
-				// eslint-disable-next-line no-undef
-				this._domElement.ownerDocument.removeEventListener( 'touchmove', onTouchMove, { passive: false } as AddEventListenerOptions );
-				this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
-				this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
-				this._domElement.ownerDocument.removeEventListener( 'touchend', onTouchEnd );
+		this._removeAllEventListeners = (): void => {
 
-			};
+			if ( ! this._domElement ) return;
 
-			this.cancel = (): void => {
+			this._domElement.style.touchAction = '';
+			this._domElement.style.userSelect = '';
+			this._domElement.style.webkitUserSelect = '';
 
-				if ( this._state === ACTION.NONE ) return;
+			this._domElement.removeEventListener( 'pointerdown', onPointerDown );
+			this._domElement.removeEventListener( 'mousedown', onMouseDown );
+			this._domElement.removeEventListener( 'pointercancel', onPointerUp );
+			// https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/removeEventListener#matching_event_listeners_for_removal
+			// > it's probably wise to use the same values used for the call to `addEventListener()` when calling `removeEventListener()`
+			// see https://github.com/microsoft/TypeScript/issues/32912#issuecomment-522142969
+			// eslint-disable-next-line no-undef
+			this._domElement.removeEventListener( 'wheel', onMouseWheel, { passive: false } as AddEventListenerOptions );
+			this._domElement.removeEventListener( 'contextmenu', onContextMenu );
+			// eslint-disable-next-line no-undef
+			this._domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove, { passive: false } as AddEventListenerOptions );
+			this._domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+			this._domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+			this._domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
 
-				this._state = ACTION.NONE;
-				this._activePointers.length = 0;
-				endDragging();
+			this._domElement.ownerDocument.removeEventListener( 'pointerlockchange', onPointerLockChange );
+			this._domElement.ownerDocument.removeEventListener( 'pointerlockerror', onPointerLockError );
 
-			};
+		};
 
-		}
+		this.cancel = (): void => {
 
+			if ( this._state === ACTION.NONE ) return;
+
+			this._state = ACTION.NONE;
+			this._activePointers.length = 0;
+			endDragging();
+
+		};
+
+		if ( domElement ) this.connect( domElement );
 		this.update( 0 );
 
 	}
@@ -1126,6 +1335,8 @@ export class CameraControls extends EventDispatcher {
 	set enabled( enabled: boolean ) {
 
 		this._enabled = enabled;
+
+		if ( ! this._domElement ) return;
 		if ( enabled ) {
 
 			this._domElement.style.touchAction = 'none';
@@ -1418,8 +1629,10 @@ export class CameraControls extends EventDispatcher {
 	 */
 	rotateTo( azimuthAngle: number, polarAngle: number, enableTransition: boolean = false ): Promise<void> {
 
-		const theta = THREE.MathUtils.clamp( azimuthAngle, this.minAzimuthAngle, this.maxAzimuthAngle );
-		const phi   = THREE.MathUtils.clamp( polarAngle,   this.minPolarAngle,   this.maxPolarAngle );
+		this._isUserControllingRotate = false;
+
+		const theta = clamp( azimuthAngle, this.minAzimuthAngle, this.maxAzimuthAngle );
+		const phi   = clamp( polarAngle,   this.minPolarAngle,   this.maxPolarAngle );
 
 		this._sphericalEnd.theta = theta;
 		this._sphericalEnd.phi   = phi;
@@ -1461,8 +1674,11 @@ export class CameraControls extends EventDispatcher {
 	 */
 	dollyTo( distance: number, enableTransition: boolean = false ): Promise<void> {
 
+		this._isUserControllingDolly = false;
+		this._dollyControlCoord.set( 0, 0 );
+
 		const lastRadius = this._sphericalEnd.radius;
-		const newRadius = THREE.MathUtils.clamp( distance, this.minDistance, this.maxDistance );
+		const newRadius = clamp( distance, this.minDistance, this.maxDistance );
 		const hasCollider = this.colliderMeshes.length >= 1;
 
 		if ( hasCollider ) {
@@ -1517,7 +1733,9 @@ export class CameraControls extends EventDispatcher {
 	 */
 	zoomTo( zoom: number, enableTransition: boolean = false, silent: boolean = false  ): Promise<void> {
 
-		this._zoomEnd = THREE.MathUtils.clamp( zoom, this.minZoom, this.maxZoom );
+		this._isUserControllingZoom = false;
+
+		this._zoomEnd = clamp( zoom, this.minZoom, this.maxZoom );
 		this._needsUpdate = true;
 
 		if ( ! enableTransition ) {
@@ -1590,6 +1808,24 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
+	 * Move up / down.
+	 * @param height Amount to move up / down. Negative value to move down
+	 * @param enableTransition Whether to move smoothly or immediately
+	 * @category Methods
+	 */
+	elevate( height: number, enableTransition: boolean = false ): Promise<void> {
+
+		_v3A.copy( this._camera.up ).multiplyScalar( height );
+		return this.moveTo(
+			this._targetEnd.x + _v3A.x,
+			this._targetEnd.y + _v3A.y,
+			this._targetEnd.z + _v3A.z,
+			enableTransition,
+		);
+
+	}
+
+	/**
 	 * Move target position to given point.
 	 * @param x x coord to move center position
 	 * @param y y coord to move center position
@@ -1598,6 +1834,8 @@ export class CameraControls extends EventDispatcher {
 	 * @category Methods
 	 */
 	moveTo( x: number, y: number, z: number, enableTransition: boolean = false ): Promise<void> {
+
+		this._isUserControllingTruck = false;
 
 		const offset = _v3A.set( x, y, z ).sub( this._targetEnd );
 		this._encloseToBoundary( this._targetEnd, offset, this.boundaryFriction );
@@ -1615,6 +1853,24 @@ export class CameraControls extends EventDispatcher {
 			approxEquals( this._target.y, this._targetEnd.y, this.restThreshold ) &&
 			approxEquals( this._target.z, this._targetEnd.z, this.restThreshold );
 		return this._createOnRestPromise( resolveImmediately );
+
+	}
+
+	/**
+	 * Look in the given point direction.
+	 * @param x point x.
+	 * @param y point y.
+	 * @param z point z.
+	 * @param enableTransition Whether to move smoothly or immediately.
+	 * @returns Transition end promise
+	 * @category Methods
+	 */
+	lookInDirectionOf( x: number, y: number, z: number, enableTransition: boolean = false ): Promise<void> {
+
+		const point = _v3A.set( x, y, z );
+		const direction = point.sub( this._targetEnd ).normalize();
+		const position = direction.multiplyScalar( - this._sphericalEnd.radius );
+		return this.setPosition( position.x, position.y, position.z, enableTransition );
 
 	}
 
@@ -1639,7 +1895,7 @@ export class CameraControls extends EventDispatcher {
 		paddingTop = 0
 	}: Partial<FitToOptions> = {} ): Promise<void[]> {
 
-		const promises = [];
+		const promises: Promise<void>[] = [];
 		const aabb = ( box3OrObject as _THREE.Box3 ).isBox3
 			? _box3A.copy( box3OrObject as _THREE.Box3 )
 			: _box3A.setFromObject( box3OrObject as _THREE.Object3D );
@@ -1753,11 +2009,11 @@ export class CameraControls extends EventDispatcher {
 	 */
 	fitToSphere( sphereOrMesh: _THREE.Sphere | _THREE.Object3D, enableTransition: boolean ): Promise<void[]> {
 
-		const promises = [];
+		const promises: Promise<void>[] = [];
 		const isSphere = sphereOrMesh instanceof THREE.Sphere;
 		const boundingSphere = isSphere ?
 			_sphere.copy( sphereOrMesh as _THREE.Sphere ) :
-			createBoundingSphere( sphereOrMesh as _THREE.Object3D, _sphere );
+			CameraControls.createBoundingSphere( sphereOrMesh as _THREE.Object3D, _sphere );
 
 		promises.push( this.moveTo(
 			boundingSphere.center.x,
@@ -1788,7 +2044,7 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Make an orbit with given points.
+	 * Look at the `target` from the `position`.
 	 * @param positionX
 	 * @param positionY
 	 * @param positionZ
@@ -1805,6 +2061,11 @@ export class CameraControls extends EventDispatcher {
 		enableTransition: boolean = false,
 		silent: boolean = false
 	): Promise<void> {
+
+		this._isUserControllingRotate = false;
+		this._isUserControllingDolly = false;
+		this._isUserControllingTruck = false;
+		this._dollyControlCoord.set( 0, 0 );
 
 		const target = _v3B.set( targetX, targetY, targetZ );
 		const position = _v3A.set( positionX, positionY, positionZ );
@@ -1868,6 +2129,11 @@ export class CameraControls extends EventDispatcher {
 		enableTransition: boolean = false,
 	): Promise<void> {
 
+		this._isUserControllingRotate = false;
+		this._isUserControllingDolly = false;
+		this._isUserControllingTruck = false;
+		this._dollyControlCoord.set( 0, 0 );
+
 		const targetA = _v3A.set( targetAX, targetAY, targetAZ );
 		const positionA = _v3B.set( positionAX, positionAY, positionAZ );
 		_sphericalA.setFromVector3( positionA.sub( targetA ).applyQuaternion( this._yAxisUpSpace ) );
@@ -1911,7 +2177,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * setLookAt without target, keep gazing at the current target
+	 * Set angle and distance by given position.
+	 * An alias of `setLookAt()`, without target change. Thus keep gazing at the current target
 	 * @param positionX
 	 * @param positionY
 	 * @param positionZ
@@ -1931,7 +2198,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * setLookAt without position, Stay still at the position.
+	 * Set the target position where gaze at.
+	 * An alias of `setLookAt()`, without position change. Thus keep the same position.
 	 * @param targetX
 	 * @param targetY
 	 * @param targetZ
@@ -1942,12 +2210,18 @@ export class CameraControls extends EventDispatcher {
 	setTarget( targetX: number, targetY: number, targetZ: number, enableTransition: boolean = false, silent: boolean = false ): Promise<void> {
 
 		const pos = this.getPosition( _v3A );
-		return this.setLookAt(
+
+		const promise = this.setLookAt(
 			pos.x, pos.y, pos.z,
 			targetX, targetY, targetZ,
 			enableTransition,
 			silent,
 		);
+
+		// see https://github.com/yomotsu/camera-controls/issues/335
+		this._sphericalEnd.phi = clamp( this.polarAngle, this.minPolarAngle, this.maxPolarAngle );
+
+		return promise;
 
 	}
 
@@ -1961,14 +2235,12 @@ export class CameraControls extends EventDispatcher {
 	 */
 	setFocalOffset( x: number, y: number, z: number, enableTransition: boolean = false ): Promise<void> {
 
+		this._isUserControllingOffset = false;
+
 		this._focalOffsetEnd.set( x, y, z );
 		this._needsUpdate = true;
 
-		if ( ! enableTransition ) {
-
-			this._focalOffset.copy( this._focalOffsetEnd );
-
-		}
+		if ( ! enableTransition ) this._focalOffset.copy( this._focalOffsetEnd );
 
 		const resolveImmediately = ! enableTransition ||
 			approxEquals( this._focalOffset.x, this._focalOffsetEnd.x, this.restThreshold ) &&
@@ -1980,6 +2252,7 @@ export class CameraControls extends EventDispatcher {
 
 	/**
 	 * Set orbit point without moving the camera.
+	 * SHOULD NOT RUN DURING ANIMATIONS. `setOrbitPoint()` will immediately fix the positions.
 	 * @param targetX
 	 * @param targetY
 	 * @param targetZ
@@ -1987,6 +2260,7 @@ export class CameraControls extends EventDispatcher {
 	 */
 	setOrbitPoint( targetX: number, targetY: number, targetZ : number ) {
 
+		this._camera.updateMatrixWorld();
 		_xColumn.setFromMatrixColumn( this._camera.matrixWorldInverse, 0 );
 		_yColumn.setFromMatrixColumn( this._camera.matrixWorldInverse, 1 );
 		_zColumn.setFromMatrixColumn( this._camera.matrixWorldInverse, 2 );
@@ -2076,7 +2350,7 @@ export class CameraControls extends EventDispatcher {
 		if ( notSupportedInOrthographicCamera( this._camera, 'getDistanceToFitBox' ) ) return this._spherical.radius;
 
 		const boundingRectAspect = width / height;
-		const fov = this._camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD;
+		const fov = this._camera.getEffectiveFOV() * DEG2RAD;
 		const aspect = this._camera.aspect;
 
 		const heightToFit = ( cover ? boundingRectAspect > aspect : boundingRectAspect < aspect ) ? height : width / aspect;
@@ -2095,7 +2369,7 @@ export class CameraControls extends EventDispatcher {
 		if ( notSupportedInOrthographicCamera( this._camera, 'getDistanceToFitSphere' ) ) return this._spherical.radius;
 
 		// https://stackoverflow.com/a/44849975
-		const vFOV = this._camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD;
+		const vFOV = this._camera.getEffectiveFOV() * DEG2RAD;
 		const hFOV = Math.atan( Math.tan( vFOV * 0.5 ) * this._camera.aspect ) * 2;
 		const fov = 1 < this._camera.aspect ? vFOV : hFOV;
 		return radius / ( Math.sin( fov * 0.5 ) );
@@ -2157,6 +2431,19 @@ export class CameraControls extends EventDispatcher {
 	 */
 	reset( enableTransition: boolean = false ): Promise<void[]> {
 
+		if (
+			! approxEquals( this._camera.up.x, this._cameraUp0.x ) ||
+			! approxEquals( this._camera.up.y, this._cameraUp0.y ) ||
+			! approxEquals( this._camera.up.z, this._cameraUp0.z )
+		) {
+
+			this._camera.up.copy( this._cameraUp0 );
+			const position = this.getPosition( _v3A );
+			this.updateCameraUp();
+			this.setPosition( position.x, position.y, position.z );
+
+		}
+
 		const promises = [
 			this.setLookAt(
 				this._position0.x, this._position0.y, this._position0.z,
@@ -2182,9 +2469,11 @@ export class CameraControls extends EventDispatcher {
 	 */
 	saveState(): void {
 
-		this._target0.copy( this._target );
-		this._position0.copy( this._camera.position );
+		this._cameraUp0.copy( this._camera.up );
+		this.getTarget( this._target0 );
+		this.getPosition( this._position0 );
 		this._zoom0 = this._zoom;
+		this._focalOffset0.copy( this._focalOffset );
 
 	}
 
@@ -2196,7 +2485,30 @@ export class CameraControls extends EventDispatcher {
 	updateCameraUp(): void {
 
 		this._yAxisUpSpace.setFromUnitVectors( this._camera.up, _AXIS_Y );
-		quatInvertCompat( this._yAxisUpSpaceInverse.copy( this._yAxisUpSpace ) );
+		this._yAxisUpSpaceInverse.copy( this._yAxisUpSpace ).invert();
+
+	}
+
+	/**
+	 * Apply current camera-up direction to the camera.
+	 * The orbit system will be re-initialized with the current position.
+	 * @category Methods
+	 */
+	applyCameraUp():void {
+
+		const cameraDirection = _v3A.subVectors( this._target, this._camera.position ).normalize();
+
+		// So first find the vector off to the side, orthogonal to both this.object.up and
+		// the "view" vector.
+		const side = _v3B.crossVectors( cameraDirection, this._camera.up ).normalize();
+		// Then find the vector orthogonal to both this "side" vector and the "view" vector.
+		// This vector will be the new "up" vector.
+		this._camera.up.crossVectors( side, cameraDirection ).normalize();
+		this._camera.updateMatrixWorld();
+
+		const position = this.getPosition( _v3A );
+		this.updateCameraUp();
+		this.setPosition( position.x, position.y, position.z );
 
 	}
 
@@ -2210,93 +2522,177 @@ export class CameraControls extends EventDispatcher {
 	 */
 	update( delta: number, silent: boolean = false ): boolean {
 
-		const dampingFactor = this._state === ACTION.NONE ? this.dampingFactor : this.draggingDampingFactor;
-		// The original THREE.OrbitControls assume 60 FPS fixed and does NOT rely on delta time.
-		// (that must be a problem of the original one though)
-		// To to emulate the speed of the original one under 60 FPS, multiply `60` to delta,
-		// but ours are more flexible to any FPS unlike the original.
-		const lerpRatio = Math.min( dampingFactor * delta * 60, 1 );
-
 		const deltaTheta  = this._sphericalEnd.theta  - this._spherical.theta;
 		const deltaPhi    = this._sphericalEnd.phi    - this._spherical.phi;
 		const deltaRadius = this._sphericalEnd.radius - this._spherical.radius;
 		const deltaTarget = _deltaTarget.subVectors( this._targetEnd, this._target );
 		const deltaOffset = _deltaOffset.subVectors( this._focalOffsetEnd, this._focalOffset );
+		const deltaZoom = this._zoomEnd - this._zoom;
 
-		if (
-			! approxZero( deltaTheta    ) ||
-			! approxZero( deltaPhi      ) ||
-			! approxZero( deltaRadius   ) ||
-			! approxZero( deltaTarget.x ) ||
-			! approxZero( deltaTarget.y ) ||
-			! approxZero( deltaTarget.z ) ||
-			! approxZero( deltaOffset.x ) ||
-			! approxZero( deltaOffset.y ) ||
-			! approxZero( deltaOffset.z )
-		) {
+		// update theta
+		if ( approxZero( deltaTheta ) ) {
 
-			this._spherical.set(
-				this._spherical.radius + deltaRadius * lerpRatio,
-				this._spherical.phi    + deltaPhi    * lerpRatio,
-				this._spherical.theta  + deltaTheta  * lerpRatio,
-			);
-
-			this._target.add( deltaTarget.multiplyScalar( lerpRatio ) );
-			this._focalOffset.add( deltaOffset.multiplyScalar( lerpRatio ) );
-
-			this._needsUpdate = true;
+			this._thetaVelocity.value = 0;
+			this._spherical.theta = this._sphericalEnd.theta;
 
 		} else {
 
-			this._spherical.copy( this._sphericalEnd );
-			this._target.copy( this._targetEnd );
-			this._focalOffset.copy( this._focalOffsetEnd );
+			const smoothTime = this._isUserControllingRotate ? this.draggingSmoothTime : this.smoothTime;
+			this._spherical.theta = smoothDamp( this._spherical.theta, this._sphericalEnd.theta, this._thetaVelocity, smoothTime, Infinity, delta );
+			this._needsUpdate = true;
 
 		}
 
-		if ( this._dollyControlAmount !== 0 ) {
+		// update phi
+		if ( approxZero( deltaPhi ) ) {
 
-			if ( isPerspectiveCamera( this._camera ) ) {
+			this._phiVelocity.value = 0;
+			this._spherical.phi = this._sphericalEnd.phi;
 
-				const camera = this._camera;
-				const direction = _v3A.setFromSpherical( this._sphericalEnd ).applyQuaternion( this._yAxisUpSpaceInverse ).normalize().negate();
-				const planeX = _v3B.copy( direction ).cross( camera.up ).normalize();
-				if ( planeX.lengthSq() === 0 ) planeX.x = 1.0;
-				const planeY = _v3C.crossVectors( planeX, direction );
-				const worldToScreen = this._sphericalEnd.radius * Math.tan( camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD * 0.5 );
-				const prevRadius = this._sphericalEnd.radius - this._dollyControlAmount;
-				const lerpRatio = ( prevRadius - this._sphericalEnd.radius ) / this._sphericalEnd.radius;
-				const cursor = _v3A.copy( this._targetEnd )
-					.add( planeX.multiplyScalar( this._dollyControlCoord.x * worldToScreen * camera.aspect ) )
-					.add( planeY.multiplyScalar( this._dollyControlCoord.y * worldToScreen ) );
-				this._targetEnd.lerp( cursor, lerpRatio );
-				this._target.copy( this._targetEnd );
+		} else {
+
+			const smoothTime = this._isUserControllingRotate ? this.draggingSmoothTime : this.smoothTime;
+			this._spherical.phi = smoothDamp( this._spherical.phi, this._sphericalEnd.phi, this._phiVelocity, smoothTime, Infinity, delta );
+			this._needsUpdate = true;
+
+		}
+
+		// update distance
+		if ( approxZero( deltaRadius ) ) {
+
+			this._radiusVelocity.value = 0;
+			this._spherical.radius = this._sphericalEnd.radius;
+
+		} else {
+
+			const smoothTime = this._isUserControllingDolly ? this.draggingSmoothTime : this.smoothTime;
+			this._spherical.radius = smoothDamp( this._spherical.radius, this._sphericalEnd.radius, this._radiusVelocity, smoothTime, this.maxSpeed, delta );
+			this._needsUpdate = true;
+
+		}
+
+		// update target position
+		if ( approxZero( deltaTarget.x ) && approxZero( deltaTarget.y ) && approxZero( deltaTarget.z ) ) {
+
+			this._targetVelocity.set( 0, 0, 0 );
+			this._target.copy( this._targetEnd );
+
+		} else {
+
+			const smoothTime = this._isUserControllingTruck ? this.draggingSmoothTime : this.smoothTime;
+			smoothDampVec3( this._target, this._targetEnd, this._targetVelocity, smoothTime, this.maxSpeed, delta, this._target );
+			this._needsUpdate = true;
+
+		}
+
+		// update focalOffset
+		if ( approxZero( deltaOffset.x ) && approxZero( deltaOffset.y ) && approxZero( deltaOffset.z ) ) {
+
+			this._focalOffsetVelocity.set( 0, 0, 0 );
+			this._focalOffset.copy( this._focalOffsetEnd );
+
+		} else {
+
+			const smoothTime = this._isUserControllingOffset ? this.draggingSmoothTime : this.smoothTime;
+			smoothDampVec3( this._focalOffset, this._focalOffsetEnd, this._focalOffsetVelocity, smoothTime, this.maxSpeed, delta, this._focalOffset );
+			this._needsUpdate = true;
+
+		}
+
+		if (
+			this.dollyToCursor &&
+			! approxZero( this._dollyControlCoord.x ) &&
+			! approxZero( this._dollyControlCoord.y )
+		) {
+
+			if ( isPerspectiveCamera( this._camera )  ) {
+
+				const dollyControlAmount = this._spherical.radius - this._lastDistance;
+
+				if ( dollyControlAmount !== 0 ) {
+
+					const camera = this._camera;
+					const cameraDirection = _v3A.setFromSpherical( this._spherical ).applyQuaternion( this._yAxisUpSpaceInverse ).normalize().negate();
+					const planeX = _v3B.copy( cameraDirection ).cross( camera.up ).normalize();
+					if ( planeX.lengthSq() === 0 ) planeX.x = 1.0;
+					const planeY = _v3C.crossVectors( planeX, cameraDirection );
+					const worldToScreen = this._sphericalEnd.radius * Math.tan( camera.getEffectiveFOV() * DEG2RAD * 0.5 );
+					const prevRadius = this._sphericalEnd.radius - dollyControlAmount;
+					const lerpRatio = ( prevRadius - this._sphericalEnd.radius ) / this._sphericalEnd.radius;
+					const cursor = _v3A.copy( this._targetEnd )
+						.add( planeX.multiplyScalar( this._dollyControlCoord.x * worldToScreen * camera.aspect ) )
+						.add( planeY.multiplyScalar( this._dollyControlCoord.y * worldToScreen ) );
+					this._targetEnd.lerp( cursor, lerpRatio );
+
+					this._target.copy( this._targetEnd );
+					// target position may be moved beyond boundary.
+					this._boundary.clampPoint( this._targetEnd, this._targetEnd );
+
+				}
 
 			} else if ( isOrthographicCamera( this._camera ) ) {
 
-				const camera = this._camera;
+				const dollyControlAmount = this._zoom - this._lastZoom;
 
-				const worldPosition = _v3A.set(
-					this._dollyControlCoord.x,
-					this._dollyControlCoord.y,
-					( camera.near + camera.far ) / ( camera.near - camera.far )
-				).unproject( camera );
+				if ( dollyControlAmount !== 0 ) {
 
-				const quaternion = _v3B.set( 0, 0, - 1 ).applyQuaternion( camera.quaternion );
+					const camera = this._camera;
+					const worldCursorPosition = _v3A.set(
+						this._dollyControlCoord.x,
+						this._dollyControlCoord.y,
+						( camera.near + camera.far ) / ( camera.near - camera.far )
+					).unproject( camera );//.sub( _v3B.set( this._focalOffset.x, this._focalOffset.y, 0 ) );
+					const quaternion = _v3B.set( 0, 0, - 1 ).applyQuaternion( camera.quaternion );
+					const cursor = _v3C.copy( worldCursorPosition ).add( quaternion.multiplyScalar( - worldCursorPosition.dot( camera.up ) ) );
+					const prevZoom = this._zoom - dollyControlAmount;
+					const lerpRatio = - ( prevZoom - this._zoomEnd ) / this._zoom;
 
-				const divisor = quaternion.dot( camera.up );
-				const distance = approxZero( divisor ) ? - worldPosition.dot( camera.up ) : - worldPosition.dot( camera.up ) / divisor;
-				const cursor = _v3C.copy( worldPosition ).add( quaternion.multiplyScalar( distance ) );
+					// find the "distance" (aka plane constant in three.js) of Plane
+					// from a given position (this._targetEnd) and normal vector (cameraDirection)
+					// https://www.maplesoft.com/support/help/maple/view.aspx?path=MathApps%2FEquationOfAPlaneNormal#bkmrk0
+					const cameraDirection = _v3A.setFromSpherical( this._spherical ).applyQuaternion( this._yAxisUpSpaceInverse ).normalize().negate();
+					const prevPlaneConstant = this._targetEnd.dot( cameraDirection );
 
-				this._targetEnd.lerp( cursor, 1 - camera.zoom / this._dollyControlAmount );
-				this._target.copy( this._targetEnd );
+					this._targetEnd.lerp( cursor, lerpRatio );
+					const newPlaneConstant = this._targetEnd.dot( cameraDirection );
+
+					// Pull back the camera depth that has moved, to be the camera stationary as zoom
+					const pullBack = cameraDirection.multiplyScalar( newPlaneConstant - prevPlaneConstant );
+					this._targetEnd.sub( pullBack );
+
+					this._target.copy( this._targetEnd );
+					// target position may be moved beyond boundary.
+					this._boundary.clampPoint( this._targetEnd, this._targetEnd );
+
+				}
 
 			}
 
-			this._dollyControlAmount = 0;
+		}
+
+		// update zoom
+		if ( approxZero( deltaZoom ) ) {
+
+			this._zoomVelocity.value = 0;
+			this._zoom = this._zoomEnd;
+
+		} else {
+
+			const smoothTime = this._isUserControllingZoom ? this.draggingSmoothTime : this.smoothTime;
+			this._zoom = smoothDamp( this._zoom, this._zoomEnd, this._zoomVelocity, smoothTime, Infinity, delta );
 
 		}
 
+		if ( this._camera.zoom !== this._zoom ) {
+
+			this._camera.zoom = this._zoom;
+			this._camera.updateProjectionMatrix();
+			this._updateNearPlaneCorners();
+			this._needsUpdate = true;
+
+		}
+
+		// collision detection
 		const maxDistance = this._collisionTest();
 		this._spherical.radius = Math.min( this._spherical.radius, maxDistance );
 
@@ -2310,10 +2706,9 @@ export class CameraControls extends EventDispatcher {
 			! approxZero( this._focalOffset.x ) ||
 			! approxZero( this._focalOffset.y ) ||
 			! approxZero( this._focalOffset.z );
-
 		if ( affectOffset ) {
 
-			this._camera.updateMatrix();
+			this._camera.updateMatrixWorld();
 			_xColumn.setFromMatrixColumn( this._camera.matrix, 0 );
 			_yColumn.setFromMatrixColumn( this._camera.matrix, 1 );
 			_zColumn.setFromMatrixColumn( this._camera.matrix, 2 );
@@ -2336,21 +2731,6 @@ export class CameraControls extends EventDispatcher {
 
 		}
 
-		// zoom
-		const deltaZoom = this._zoomEnd - this._zoom;
-		this._zoom += deltaZoom * lerpRatio;
-
-		if ( this._camera.zoom !== this._zoom ) {
-
-			if ( approxZero( deltaZoom ) ) this._zoom = this._zoomEnd;
-
-			this._camera.zoom = this._zoom;
-			this._camera.updateProjectionMatrix();
-			this._updateNearPlaneCorners();
-
-			this._needsUpdate = true;
-
-		}
 
 		// We need no events dispatching
 		if ( silent ) {
@@ -2401,8 +2781,12 @@ export class CameraControls extends EventDispatcher {
 
 		}
 
+		this._lastDistance = this._spherical.radius;
+		this._lastZoom = this._zoom;
+
 		this._updatedLastTime = updated;
 		this._needsUpdate = false;
+
 		return updated;
 
 	}
@@ -2424,8 +2808,8 @@ export class CameraControls extends EventDispatcher {
 			maxPolarAngle        : infinityToMaxNumber( this.maxPolarAngle ),
 			minAzimuthAngle      : infinityToMaxNumber( this.minAzimuthAngle ),
 			maxAzimuthAngle      : infinityToMaxNumber( this.maxAzimuthAngle ),
-			dampingFactor        : this.dampingFactor,
-			draggingDampingFactor: this.draggingDampingFactor,
+			smoothTime           : this.smoothTime,
+			draggingSmoothTime   : this.draggingSmoothTime,
 			dollySpeed           : this.dollySpeed,
 			truckSpeed           : this.truckSpeed,
 			dollyToCursor        : this.dollyToCursor,
@@ -2454,7 +2838,6 @@ export class CameraControls extends EventDispatcher {
 	fromJSON( json: string, enableTransition: boolean = false ): void {
 
 		const obj = JSON.parse( json );
-		const position = _v3A.fromArray( obj.position );
 
 		this.enabled               = obj.enabled;
 
@@ -2466,8 +2849,8 @@ export class CameraControls extends EventDispatcher {
 		this.maxPolarAngle         = maxNumberToInfinity( obj.maxPolarAngle );
 		this.minAzimuthAngle       = maxNumberToInfinity( obj.minAzimuthAngle );
 		this.maxAzimuthAngle       = maxNumberToInfinity( obj.maxAzimuthAngle );
-		this.dampingFactor         = obj.dampingFactor;
-		this.draggingDampingFactor = obj.draggingDampingFactor;
+		this.smoothTime            = obj.smoothTime;
+		this.draggingSmoothTime    = obj.draggingSmoothTime;
 		this.dollySpeed            = obj.dollySpeed;
 		this.truckSpeed            = obj.truckSpeed;
 		this.dollyToCursor         = obj.dollyToCursor;
@@ -2479,12 +2862,48 @@ export class CameraControls extends EventDispatcher {
 		this._focalOffset0.fromArray( obj.focalOffset0 );
 
 		this.moveTo( obj.target[ 0 ], obj.target[ 1 ], obj.target[ 2 ], enableTransition );
-		_sphericalA.setFromVector3( position.sub( this._targetEnd ).applyQuaternion( this._yAxisUpSpace ) );
+		_sphericalA.setFromVector3( _v3A.fromArray( obj.position ).sub( this._targetEnd ).applyQuaternion( this._yAxisUpSpace ) );
 		this.rotateTo( _sphericalA.theta, _sphericalA.phi, enableTransition );
+		this.dollyTo( _sphericalA.radius, enableTransition );
 		this.zoomTo( obj.zoom, enableTransition );
 		this.setFocalOffset( obj.focalOffset[ 0 ], obj.focalOffset[ 1 ], obj.focalOffset[ 2 ], enableTransition );
 
 		this._needsUpdate = true;
+
+	}
+
+	/**
+	 * Attach all internal event handlers to enable drag control.
+	 * @category Methods
+	 */
+	connect( domElement: HTMLElement ): void {
+
+		if ( this._domElement ) {
+
+			console.warn( 'camera-controls is already connected.' );
+			return;
+
+		}
+
+		domElement.setAttribute( 'data-camera-controls-version', VERSION );
+		this._addAllEventListeners( domElement );
+
+	}
+
+	/**
+	 * Detach all internal event handlers to disable drag control.
+	 */
+	disconnect() {
+
+		this.cancel();
+		this._removeAllEventListeners();
+
+		if ( this._domElement ) {
+
+			this._domElement.removeAttribute( 'data-camera-controls-version' );
+			this._domElement = undefined;
+
+		}
 
 	}
 
@@ -2494,28 +2913,30 @@ export class CameraControls extends EventDispatcher {
 	 */
 	dispose(): void {
 
-		this._removeAllEventListeners();
+		// remove all user event listeners
+		this.removeAllEventListeners();
+		// remove all internal event listeners
+		this.disconnect();
 
 	}
 
 
-	protected _findPointerById( pointerId: number ): PointerInput | null {
+	protected _findPointerById( pointerId: number ): PointerInput | undefined {
 
-		// to support IE11 use some instead of Array#find (will be removed when IE11 is deprecated)
-		let pointer: PointerInput | null = null;
-		this._activePointers.some( ( activePointer ) => {
+		return this._activePointers.find( ( activePointer ) => activePointer.pointerId === pointerId );
 
-			if ( activePointer.pointerId === pointerId ) {
+	}
 
-				pointer = activePointer;
-				return true;
+	protected _findPointerByMouseButton( mouseButton: MOUSE_BUTTON ): PointerInput | undefined {
 
-			}
+		return this._activePointers.find( ( activePointer ) => activePointer.mouseButton === mouseButton );
 
-			return false;
+	}
 
-		} );
-		return pointer;
+
+	protected _disposePointer( pointer: PointerInput ): void {
+
+		this._activePointers.splice( this._activePointers.indexOf( pointer ), 1 );
 
 	}
 
@@ -2565,7 +2986,7 @@ export class CameraControls extends EventDispatcher {
 
 			const camera = this._camera;
 			const near = camera.near;
-			const fov = camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD;
+			const fov = camera.getEffectiveFOV() * DEG2RAD;
 			const heightHalf = Math.tan( fov * 0.5 ) * near; // near plain half height
 			const widthHalf = heightHalf * camera.aspect; // near plain half width
 			this._nearPlaneCorners[ 0 ].set( - widthHalf, - heightHalf, 0 );
@@ -2593,47 +3014,54 @@ export class CameraControls extends EventDispatcher {
 
 	protected _truckInternal = ( deltaX: number, deltaY: number, dragToOffset: boolean ): void => {
 
+		let truckX: number;
+		let pedestalY: number;
+
 		if ( isPerspectiveCamera( this._camera ) ) {
 
 			const offset = _v3A.copy( this._camera.position ).sub( this._target );
 			// half of the fov is center to top of screen
-			const fov = this._camera.getEffectiveFOV() * THREE.MathUtils.DEG2RAD;
+			const fov = this._camera.getEffectiveFOV() * DEG2RAD;
 			const targetDistance = offset.length() * Math.tan( fov * 0.5 );
-			const truckX    = ( this.truckSpeed * deltaX * targetDistance / this._elementRect.height );
-			const pedestalY = ( this.truckSpeed * deltaY * targetDistance / this._elementRect.height );
-			if ( this.verticalDragToForward ) {
 
-				dragToOffset ?
-					this.setFocalOffset(
-						this._focalOffsetEnd.x + truckX,
-						this._focalOffsetEnd.y,
-						this._focalOffsetEnd.z,
-						true,
-					) :
-					this.truck( truckX, 0, true );
-				this.forward( - pedestalY, true );
-
-			} else {
-
-				dragToOffset ?
-					this.setFocalOffset(
-						this._focalOffsetEnd.x + truckX,
-						this._focalOffsetEnd.y + pedestalY,
-						this._focalOffsetEnd.z,
-						true,
-					) :
-					this.truck( truckX, pedestalY, true );
-
-			}
+			truckX    = ( this.truckSpeed * deltaX * targetDistance / this._elementRect.height );
+			pedestalY = ( this.truckSpeed * deltaY * targetDistance / this._elementRect.height );
 
 		} else if ( isOrthographicCamera( this._camera ) ) {
 
-			// orthographic
 			const camera = this._camera;
-			const truckX    = deltaX * ( camera.right - camera.left   ) / camera.zoom / this._elementRect.width;
-			const pedestalY = deltaY * ( camera.top   - camera.bottom ) / camera.zoom / this._elementRect.height;
+
+			truckX    = deltaX * ( camera.right - camera.left   ) / camera.zoom / this._elementRect.width;
+			pedestalY = deltaY * ( camera.top   - camera.bottom ) / camera.zoom / this._elementRect.height;
+
+		} else {
+
+			return;
+
+		}
+
+		if ( this.verticalDragToForward ) {
+
 			dragToOffset ?
-				this.setFocalOffset( this._focalOffsetEnd.x + truckX, this._focalOffsetEnd.y + pedestalY, this._focalOffsetEnd.z, true ) :
+				this.setFocalOffset(
+					this._focalOffsetEnd.x + truckX,
+					this._focalOffsetEnd.y,
+					this._focalOffsetEnd.z,
+					true,
+				) :
+				this.truck( truckX, 0, true );
+
+			this.forward( - pedestalY, true );
+
+		} else {
+
+			dragToOffset ?
+				this.setFocalOffset(
+					this._focalOffsetEnd.x + truckX,
+					this._focalOffsetEnd.y + pedestalY,
+					this._focalOffsetEnd.z,
+					true,
+				) :
 				this.truck( truckX, pedestalY, true );
 
 		}
@@ -2653,33 +3081,22 @@ export class CameraControls extends EventDispatcher {
 		const dollyScale = Math.pow( 0.95, - delta * this.dollySpeed );
 		const distance = this._sphericalEnd.radius * dollyScale;
 		const prevRadius = this._sphericalEnd.radius;
-		const signedPrevRadius = prevRadius * ( delta >= 0 ? - 1 : 1 );
 
-		this.dollyTo( distance );
+		this.dollyTo( distance, true );
 
-		if ( this.infinityDolly && ( distance < this.minDistance || this.maxDistance === this.minDistance ) ) {
+		if ( this._infinityDolly && ( distance < this.minDistance || this.maxDistance === this.minDistance ) ) {
 
+			const signedPrevRadius = prevRadius * ( delta >= 0 ? - 1 : 1 );
 			this._camera.getWorldDirection( _v3A );
 			this._targetEnd.add( _v3A.normalize().multiplyScalar( signedPrevRadius ) );
-			this._target.add( _v3A.normalize().multiplyScalar( signedPrevRadius ) );
 
 		}
 
 		if ( this.dollyToCursor ) {
 
-			this._dollyControlAmount += this._sphericalEnd.radius - prevRadius;
-
-			if ( this.infinityDolly && ( distance < this.minDistance || this.maxDistance === this.minDistance ) ) {
-
-				this._dollyControlAmount -= signedPrevRadius;
-
-			}
-
 			this._dollyControlCoord.set( x, y );
 
 		}
-
-		return;
 
 	};
 
@@ -2692,13 +3109,9 @@ export class CameraControls extends EventDispatcher {
 
 		if ( this.dollyToCursor ) {
 
-			this._dollyControlAmount = this._zoomEnd;
-
 			this._dollyControlCoord.set( x, y );
 
 		}
-
-		return;
 
 	};
 
@@ -2743,7 +3156,9 @@ export class CameraControls extends EventDispatcher {
 	/**
 	 * Get its client rect and package into given `DOMRect` .
 	 */
-	protected _getClientRect( target: DOMRect ): DOMRect {
+	protected _getClientRect( target: DOMRect ): DOMRect | undefined {
+
+		if ( ! this._domElement ) return;
 
 		const rect = this._domElement.getBoundingClientRect();
 
@@ -2790,37 +3205,104 @@ export class CameraControls extends EventDispatcher {
 
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	protected _addAllEventListeners( _domElement: HTMLElement ): void {}
+
 	protected _removeAllEventListeners(): void {}
 
-}
+	/**
+	 * backward compatible
+	 * @deprecated use smoothTime (in seconds) instead
+	 * @category Properties
+	 */
+	get dampingFactor() {
 
-function createBoundingSphere( object3d: _THREE.Object3D, out: _THREE.Sphere ): _THREE.Sphere {
+		console.warn( '.dampingFactor has been deprecated. use smoothTime (in seconds) instead.' );
+		return 0;
 
-	const boundingSphere = out;
-	const center = boundingSphere.center;
+	}
 
-	_box3A.makeEmpty();
-	// find the center
-	object3d.traverseVisible( ( object ) => {
+	/**
+	 * backward compatible
+	 * @deprecated use smoothTime (in seconds) instead
+	 * @category Properties
+	 */
+	set dampingFactor( _: number ) {
 
-		if ( ! ( object as _THREE.Mesh ).isMesh ) return;
+		console.warn( '.dampingFactor has been deprecated. use smoothTime (in seconds) instead.' );
 
-		_box3A.expandByObject( object );
+	}
 
-	} );
-	_box3A.getCenter( center );
+	/**
+	 * backward compatible
+	 * @deprecated use draggingSmoothTime (in seconds) instead
+	 * @category Properties
+	 */
+	get draggingDampingFactor() {
 
-	// find the radius
-	let maxRadiusSq = 0;
-	object3d.traverseVisible( ( object ) => {
+		console.warn( '.draggingDampingFactor has been deprecated. use draggingSmoothTime (in seconds) instead.' );
+		return 0;
 
-		if ( ! ( object as _THREE.Mesh ).isMesh ) return;
+	}
 
-		const mesh = ( object as _THREE.Mesh );
-		const geometry = mesh.geometry.clone();
-		geometry.applyMatrix4( mesh.matrixWorld );
+	/**
+	 * backward compatible
+	 * @deprecated use draggingSmoothTime (in seconds) instead
+	 * @category Properties
+	 */
+	set draggingDampingFactor( _: number ) {
 
-		if ( geometry.isBufferGeometry ) {
+		console.warn( '.draggingDampingFactor has been deprecated. use draggingSmoothTime (in seconds) instead.' );
+
+	}
+
+	/**
+	 * @deprecated infinityDolly will be removed in the next major release. use .forward() alternatively
+	 * @category Properties
+	 */
+	set infinityDolly( infinityDolly: boolean ) {
+
+		console.warn( '.infinityDolly will be removed. use .forward() alternatively' );
+		this._infinityDolly = infinityDolly;
+
+	}
+
+	/**
+	 * @deprecated infinityDolly will be removed in the next major release. use .forward() alternatively
+	 * @category Properties
+	 */
+	get infinityDolly() {
+
+		console.warn( '.infinityDolly will be removed. use .forward() alternatively' );
+		return this._infinityDolly;
+
+	}
+
+	static createBoundingSphere( object3d: _THREE.Object3D, out: _THREE.Sphere = new THREE.Sphere() ): _THREE.Sphere {
+
+		const boundingSphere = out;
+		const center = boundingSphere.center;
+
+		_box3A.makeEmpty();
+		// find the center
+		object3d.traverseVisible( ( object ) => {
+
+			if ( ! ( object as _THREE.Mesh ).isMesh ) return;
+
+			_box3A.expandByObject( object );
+
+		} );
+		_box3A.getCenter( center );
+
+		// find the radius
+		let maxRadiusSq = 0;
+		object3d.traverseVisible( ( object ) => {
+
+			if ( ! ( object as _THREE.Mesh ).isMesh ) return;
+
+			const mesh = ( object as _THREE.Mesh );
+			const geometry = mesh.geometry.clone();
+			geometry.applyMatrix4( mesh.matrixWorld );
 
 			const bufferGeometry = geometry;
 			const position = bufferGeometry.attributes.position as _THREE.BufferAttribute;
@@ -2832,25 +3314,11 @@ function createBoundingSphere( object3d: _THREE.Object3D, out: _THREE.Sphere ): 
 
 			}
 
-		} else {
+		} );
 
-			// for old three.js, which supports both BufferGeometry and Geometry
-			// this condition block will be removed in the near future.
-			const position = geometry.attributes.position;
-			const vector = new THREE.Vector3();
+		boundingSphere.radius = Math.sqrt( maxRadiusSq );
+		return boundingSphere;
 
-			for ( let i = 0, l = position.count; i < l; i ++ ) {
-
-				vector.fromBufferAttribute( position, i );
-				maxRadiusSq = Math.max( maxRadiusSq, center.distanceToSquared( vector ) );
-
-			}
-
-		}
-
-	} );
-
-	boundingSphere.radius = Math.sqrt( maxRadiusSq );
-	return boundingSphere;
+	}
 
 }

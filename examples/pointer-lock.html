@@ -8,10 +8,10 @@
 </head>
 <body>
 <div class="info">
-	<a href="https://github.com/yomotsu/camera-controls">GitHub repo</a><br>
-	<button onclick="cameraControls.reset( true )">reset</button><br>
-	<button onclick="rotate45()">rotate 45 deg <b>relatively</b> with easing in 1 sec</button><br>
-	<button onclick="rotate0To120()">rotate 0 to 120 deg with easing in 3 sec</button><br>
+	<p><a href="https://github.com/yomotsu/camera-controls">GitHub repo</a></p>
+	<button onclick="cameraControls.lockPointer()">lock pointer (auto move)</button><br>
+	<button onclick="renderer.domElement.requestPointerLock();">lock pointer (user dragging)</button><br>
+	<button onclick="cameraControls.reset( true )">reset</button>
 </div>
 
 <script async src="https://unpkg.com/es-module-shims@1.7.1/dist/es-module-shims.js"></script>
@@ -25,7 +25,6 @@
 </script>
 <script type="module">
 import * as THREE from 'three';
-import gsap from "https://unpkg.com/gsap@3.10.4/index.js";
 import CameraControls from './dist/camera-controls.module.js';
 CameraControls.install( { THREE: THREE } );
 
@@ -51,45 +50,6 @@ const gridHelper = new THREE.GridHelper( 50, 50 );
 gridHelper.position.y = - 1;
 scene.add( gridHelper );
 
-
-const rotate45 = function () {
-
-	const tween = gsap.to(
-		cameraControls,
-		{
-			azimuthAngle: cameraControls.azimuthAngle + 45 * THREE.MathUtils.DEG2RAD,
-			duration: 1,
-			ease: 'elastic',
-			paused: true
-		},
-	);
-
-	cameraControls.enabled = false;
-	tween.play( 0 );
-
-}
-
-
-const rotate0To120 = function () {
-
-	const tween = gsap.fromTo(
-		cameraControls,
-		{
-			azimuthAngle: 0,
-		},
-		{
-			azimuthAngle: 120 * THREE.MathUtils.DEG2RAD,
-			duration: 3,
-			paused: true
-		},
-	);
-
-	cameraControls.enabled = false;
-	tween.play( 0 );
-
-}
-
-
 renderer.render( scene, camera );
 
 ( function anim () {
@@ -97,8 +57,6 @@ renderer.render( scene, camera );
 	const delta = clock.getDelta();
 	const elapsed = clock.getElapsedTime();
 	const updated = cameraControls.update( delta );
-
-	// if ( elapsed > 30 ) { return; }
 
 	requestAnimationFrame( anim );
 
@@ -112,9 +70,8 @@ renderer.render( scene, camera );
 } )();
 
 // make variable available to browser console
+globalThis.renderer = renderer;
 globalThis.cameraControls = cameraControls;
-globalThis.rotate45 = rotate45;
-globalThis.rotate0To120 = rotate0To120;
 </script>
 
 </body>
