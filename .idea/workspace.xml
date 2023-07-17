@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
   <component name="ChangeListManager">
-    <list default="true" id="d0d6d355-54d1-40b6-9300-aa4e1d840bb5" name="Changes" comment="">
+    <list default="true" id="d0d6d355-54d1-40b6-9300-aa4e1d840bb5" name="Changes" comment="upd deps">
+      <change beforePath="$PROJECT_DIR$/.husky/pre-commit" beforeDir="false" afterPath="$PROJECT_DIR$/.husky/pre-commit" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dist/camera-controls.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dist/camera-controls.min.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.min.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dist/camera-controls.module.js" beforeDir="false" afterPath="$PROJECT_DIR$/dist/camera-controls.module.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dist/types.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/dist/types.d.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/CameraControls.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/CameraControls.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -32,7 +32,8 @@
     &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/fil/_work/IRRIS2/__packages/camera-controls&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/fil/_work/IRRIS2/__packages/ThreeOrbitControlsGizmo&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -43,6 +44,23 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
+  <component name="RunManager">
+    <configuration name="build" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
+      <package-json value="$PROJECT_DIR$/package.json" />
+      <command value="run" />
+      <scripts>
+        <script value="build" />
+      </scripts>
+      <node-interpreter value="$USER_HOME$/.nvm/versions/node/v16.16.0/bin/node" />
+      <envs />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="npm.build" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
@@ -69,6 +87,13 @@
       <workItem from="1661365365181" duration="12000" />
       <workItem from="1661366375687" duration="1409000" />
       <workItem from="1661589956466" duration="271000" />
+      <workItem from="1661590622972" duration="343000" />
+      <workItem from="1685390015036" duration="137000" />
+      <workItem from="1685390258929" duration="4964000" />
+      <workItem from="1686063855671" duration="2511000" />
+      <workItem from="1686172266871" duration="5000" />
+      <workItem from="1688933093904" duration="15000" />
+      <workItem from="1689598990825" duration="381000" />
     </task>
     <task id="LOCAL-00001" summary="Change package json">
       <created>1656354421504</created>
@@ -91,18 +116,52 @@
       <option name="project" value="LOCAL" />
       <updated>1656369599070</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Made &quot;silentUpdate&quot; event to maintain right behaviour of dependant modules">
+      <created>1661590714994</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1661590714994</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
+    <option name="RECENT_FILTERS">
+      <map>
+        <entry key="Branch">
+          <value>
+            <list>
+              <RecentGroup>
+                <option name="FILTER_VALUES">
+                  <option value="master" />
+                </option>
+              </RecentGroup>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
     <option name="TAB_STATES">
       <map>
         <entry key="MAIN">
           <value>
-            <State />
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="master" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
           </value>
         </entry>
       </map>
@@ -114,7 +173,11 @@
     <MESSAGE value="Change package json" />
     <MESSAGE value="Change package json and .idea folder" />
     <MESSAGE value="Add ability for silent (no event emitting) changes for #setLookAt and #zoomTo features&#10;&#10;This is made to prevent repeating of control events after&#10;position, target and zoom values validation in the client code" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add ability for silent (no event emitting) changes for #setLookAt and #zoomTo features&#10;&#10;This is made to prevent repeating of control events after&#10;position, target and zoom values validation in the client code" />
+    <MESSAGE value="Made &quot;silentUpdate&quot; event to maintain right behaviour of dependant modules" />
+    <MESSAGE value="upd three+" />
+    <MESSAGE value="upd three++" />
+    <MESSAGE value="upd deps" />
+    <option name="LAST_COMMIT_MESSAGE" value="upd deps" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
