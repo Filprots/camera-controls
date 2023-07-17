@@ -4,6 +4,7 @@ import {
 	Ref,
 	MOUSE_BUTTON,
 	ACTION,
+	DOLLY_DIRECTION,
 	PointerInput,
 	MouseButtons,
 	Touches,
@@ -46,6 +47,7 @@ let _v2: _THREE.Vector2;
 let _v3A: _THREE.Vector3;
 let _v3B: _THREE.Vector3;
 let _v3C: _THREE.Vector3;
+let _cameraDirection: _THREE.Vector3;
 let _xColumn: _THREE.Vector3;
 let _yColumn: _THREE.Vector3;
 let _zColumn: _THREE.Vector3;
@@ -113,6 +115,7 @@ export class CameraControls extends EventDispatcher {
 		_v3A = new THREE.Vector3();
 		_v3B = new THREE.Vector3();
 		_v3C = new THREE.Vector3();
+		_cameraDirection = new THREE.Vector3();
 		_xColumn = new THREE.Vector3();
 		_yColumn = new THREE.Vector3();
 		_zColumn = new THREE.Vector3();
@@ -199,24 +202,27 @@ export class CameraControls extends EventDispatcher {
 	 * @category Properties
 	 */
 	minDistance = Number.EPSILON;
+
 	/**
 	 * Maximum distance for dolly. The value must be higher than `minDistance`. Default is `Infinity`.
 	 * PerspectiveCamera only.
 	 * @category Properties
 	 */
 	maxDistance = Infinity;
+
 	/**
-	 * `true` to enable Infinity Dolly.  
-	 * When the Dolly distance is less than the `minDistance`, radius of the sphere will be set `minDistance` automatically.
+	 * `true` to enable Infinity Dolly for wheel and pinch. Use this with `minDistance` and `maxDistance`  
+	 * If the Dolly distance is less (or over) than the `minDistance` (or `maxDistance`), `infinityDolly` will keep the distance and pushes the target position instead.
 	 * @category Properties
 	 */
-	protected _infinityDolly = false;
+	infinityDolly = false;
 
 	/**
 	 * Minimum camera zoom.
 	 * @category Properties
 	 */
 	minZoom = 0.01;
+
 	/**
 	 * Maximum camera zoom.
 	 * @category Properties
@@ -268,15 +274,18 @@ export class CameraControls extends EventDispatcher {
 	 * @category Properties
 	 */
 	truckSpeed = 2.0;
+
 	/**
 	 * `true` to enable Dolly-in to the mouse cursor coords.
 	 * @category Properties
 	 */
 	dollyToCursor = false;
+
 	/**
 	 * @category Properties
 	 */
 	dragToOffset = false;
+
 	/**
 	 * The same as `.screenSpacePanning` in three.js's OrbitControls.
 	 * @category Properties
@@ -322,6 +331,7 @@ export class CameraControls extends EventDispatcher {
 	 * @category Properties
 	 */
 	mouseButtons: MouseButtons;
+
 	/**
 	 * User's touch input config.
 	 *
@@ -393,6 +403,8 @@ export class CameraControls extends EventDispatcher {
 	protected _focalOffset0: _THREE.Vector3;
 
 	protected _dollyControlCoord: _THREE.Vector2;
+	protected _changedDolly = 0;
+	protected _changedZoom = 0;
 
 	// collisionTest uses nearPlane. ( PerspectiveCamera only )
 	protected _nearPlaneCorners: [ _THREE.Vector3, _THREE.Vector3, _THREE.Vector3, _THREE.Vector3 ];
@@ -410,6 +422,7 @@ export class CameraControls extends EventDispatcher {
 	protected _isDragging = false;
 	protected _activePointers: PointerInput[] = [];
 	protected _lockedPointer: PointerInput | null = null;
+	protected _interactiveArea = new DOMRect( 0, 0, 1, 1 );
 
 	// Use draggingSmoothTime over smoothTime while true.
 	// set automatically true on user-dragging start.
@@ -419,6 +432,7 @@ export class CameraControls extends EventDispatcher {
 	protected _isUserControllingTruck: boolean = false;
 	protected _isUserControllingOffset: boolean = false;
 	protected _isUserControllingZoom: boolean = false;
+	protected _lastDollyDirection: DOLLY_DIRECTION = DOLLY_DIRECTION.NONE;
 
 	// velocities for smoothDamp
 	protected _thetaVelocity: Ref = { value: 0 };
@@ -532,6 +546,27 @@ export class CameraControls extends EventDispatcher {
 
 			if ( ! this._enabled || ! this._domElement ) return;
 
+			if (
+				this._interactiveArea.left !== 0 ||
+				this._interactiveArea.top !== 0 ||
+				this._interactiveArea.width !== 1 ||
+				this._interactiveArea.height !== 1
+			) {
+
+				const elRect = this._domElement.getBoundingClientRect();
+				const left = event.clientX / elRect.width;
+				const top = event.clientY / elRect.height;
+
+				// check if the interactiveArea contains the drag start position.
+				if (
+					left < this._interactiveArea.left ||
+					left > this._interactiveArea.right ||
+					top < this._interactiveArea.top ||
+					top > this._interactiveArea.bottom
+				) return;
+
+			}
+
 			// Don't call `event.preventDefault()` on the pointerdown event
 			// to keep receiving pointermove evens outside dragging iframe
 			// https://taye.me/blog/tips/2015/11/16/mouse-drag-outside-iframe/
@@ -577,6 +612,27 @@ export class CameraControls extends EventDispatcher {
 		const onMouseDown = ( event: MouseEvent ) => {
 
 			if ( ! this._enabled || ! this._domElement || this._lockedPointer ) return;
+
+			if (
+				this._interactiveArea.left !== 0 ||
+				this._interactiveArea.top !== 0 ||
+				this._interactiveArea.width !== 1 ||
+				this._interactiveArea.height !== 1
+			) {
+
+				const elRect = this._domElement.getBoundingClientRect();
+				const left = event.clientX / elRect.width;
+				const top = event.clientY / elRect.height;
+
+				// check if the interactiveArea contains the drag start position.
+				if (
+					left < this._interactiveArea.left ||
+					left > this._interactiveArea.right ||
+					top < this._interactiveArea.top ||
+					top > this._interactiveArea.bottom
+				) return;
+
+			}
 
 			const mouseButton =
 				( event.buttons & MOUSE_BUTTON.LEFT ) === MOUSE_BUTTON.LEFT ? MOUSE_BUTTON.LEFT :
@@ -784,7 +840,29 @@ export class CameraControls extends EventDispatcher {
 
 		const onMouseWheel = ( event: WheelEvent ): void => {
 
+			if ( ! this._domElement ) return;
 			if ( ! this._enabled || this.mouseButtons.wheel === ACTION.NONE ) return;
+
+			if (
+				this._interactiveArea.left !== 0 ||
+				this._interactiveArea.top !== 0 ||
+				this._interactiveArea.width !== 1 ||
+				this._interactiveArea.height !== 1
+			) {
+
+				const elRect = this._domElement.getBoundingClientRect();
+				const left = event.clientX / elRect.width;
+				const top = event.clientY / elRect.height;
+
+				// check if the interactiveArea contains the drag start position.
+				if (
+					left < this._interactiveArea.left ||
+					left > this._interactiveArea.right ||
+					top < this._interactiveArea.top ||
+					top > this._interactiveArea.bottom
+				) return;
+
+			}
 
 			event.preventDefault();
 
@@ -1477,6 +1555,21 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
+	 * Set drag-start, touches and wheel enable area in the domElement.  
+	 * each values are between `0` and `1` inclusive, where `0` is left/top and `1` is right/bottom of the screen.  
+	 * e.g. `{ x: 0, y: 0, width: 1, height: 1 }` for entire area.
+	 * @category Properties
+	 */
+	set interactiveArea( interactiveArea: DOMRect | { x: number, y: number, width: number, height: number } ) {
+
+		this._interactiveArea.width = clamp( interactiveArea.width, 0, 1 );
+		this._interactiveArea.height = clamp( interactiveArea.height, 0, 1 );
+		this._interactiveArea.x = clamp( interactiveArea.x, 0, 1 - this._interactiveArea.width );
+		this._interactiveArea.y = clamp( interactiveArea.x, 0, 1 - this._interactiveArea.height );
+
+	}
+
+	/**
 	 * Adds the specified event listener.
 	 * Applicable event types (which is `K`) are:
 	 * | Event name          | Timing |
@@ -1675,25 +1768,30 @@ export class CameraControls extends EventDispatcher {
 	dollyTo( distance: number, enableTransition: boolean = false ): Promise<void> {
 
 		this._isUserControllingDolly = false;
-		this._dollyControlCoord.set( 0, 0 );
+		this._lastDollyDirection = DOLLY_DIRECTION.NONE;
+		this._changedDolly = 0;
+		return this._dollyToNoClamp( clamp( distance, this.minDistance, this.maxDistance ), enableTransition );
+
+	}
+
+	protected _dollyToNoClamp( distance: number, enableTransition: boolean = false ): Promise<void> {
 
 		const lastRadius = this._sphericalEnd.radius;
-		const newRadius = clamp( distance, this.minDistance, this.maxDistance );
 		const hasCollider = this.colliderMeshes.length >= 1;
 
 		if ( hasCollider ) {
 
 			const maxDistanceByCollisionTest = this._collisionTest();
 			const isCollided = approxEquals( maxDistanceByCollisionTest, this._spherical.radius );
-			const isDollyIn = lastRadius > newRadius;
+			const isDollyIn = lastRadius > distance;
 
 			if ( ! isDollyIn && isCollided ) return Promise.resolve();
 
-			this._sphericalEnd.radius = Math.min( newRadius, maxDistanceByCollisionTest );
+			this._sphericalEnd.radius = Math.min( distance, maxDistanceByCollisionTest );
 
 		} else {
 
-			this._sphericalEnd.radius = newRadius;
+			this._sphericalEnd.radius = distance;
 
 		}
 
@@ -1706,6 +1804,31 @@ export class CameraControls extends EventDispatcher {
 		}
 
 		const resolveImmediately =  ! enableTransition || approxEquals( this._spherical.radius, this._sphericalEnd.radius, this.restThreshold );
+		return this._createOnRestPromise( resolveImmediately );
+
+	}
+
+	/**
+	 * Dolly in, but does not change the distance between the target and the camera, and moves the target position instead.
+	 * Specify a negative value for dolly out.
+	 * @param distance Distance of dolly.
+	 * @param enableTransition Whether to move smoothly or immediately.
+	 * @category Methods
+	 */
+	dollyInFixed( distance: number, enableTransition: boolean = false ): Promise<void> {
+
+		this._targetEnd.add( this._getCameraDirection( _cameraDirection ).multiplyScalar( distance ) );
+
+		if ( ! enableTransition ) {
+
+			this._target.copy( this._targetEnd );
+
+		}
+
+		const resolveImmediately = ! enableTransition ||
+			approxEquals( this._target.x, this._targetEnd.x, this.restThreshold ) &&
+			approxEquals( this._target.y, this._targetEnd.y, this.restThreshold ) &&
+			approxEquals( this._target.z, this._targetEnd.z, this.restThreshold );
 		return this._createOnRestPromise( resolveImmediately );
 
 	}
@@ -1753,6 +1876,7 @@ export class CameraControls extends EventDispatcher {
 		}
 
 		const resolveImmediately = ! enableTransition || approxEquals( this._zoom, this._zoomEnd, this.restThreshold );
+		this._changedZoom = 0;
 		return this._createOnRestPromise( resolveImmediately );
 
 	}
@@ -2065,7 +2189,8 @@ export class CameraControls extends EventDispatcher {
 		this._isUserControllingRotate = false;
 		this._isUserControllingDolly = false;
 		this._isUserControllingTruck = false;
-		this._dollyControlCoord.set( 0, 0 );
+		this._lastDollyDirection = DOLLY_DIRECTION.NONE;
+		this._changedDolly = 0;
 
 		const target = _v3B.set( targetX, targetY, targetZ );
 		const position = _v3A.set( positionX, positionY, positionZ );
@@ -2132,7 +2257,8 @@ export class CameraControls extends EventDispatcher {
 		this._isUserControllingRotate = false;
 		this._isUserControllingDolly = false;
 		this._isUserControllingTruck = false;
-		this._dollyControlCoord.set( 0, 0 );
+		this._lastDollyDirection = DOLLY_DIRECTION.NONE;
+		this._changedDolly = 0;
 
 		const targetA = _v3A.set( targetAX, targetAY, targetAZ );
 		const positionA = _v3B.set( positionAX, positionAY, positionAZ );
@@ -2219,7 +2345,7 @@ export class CameraControls extends EventDispatcher {
 		);
 
 		// see https://github.com/yomotsu/camera-controls/issues/335
-		this._sphericalEnd.phi = clamp( this.polarAngle, this.minPolarAngle, this.maxPolarAngle );
+		this._sphericalEnd.phi = clamp( this._sphericalEnd.phi, this.minPolarAngle, this.maxPolarAngle );
 
 		return promise;
 
@@ -2377,38 +2503,54 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Returns its current gazing target, which is the center position of the orbit.
-	 * @param out current gazing target
+	 * Returns the orbit center position, where the camera looking at.
+	 * @param out The receiving Vector3 instance to copy the result
+	 * @param receiveEndValue Whether receive the transition end coords or current. default is `true`
 	 * @category Methods
 	 */
-	getTarget( out: _THREE.Vector3 ): _THREE.Vector3 {
+	getTarget( out: _THREE.Vector3, receiveEndValue: boolean = true ): _THREE.Vector3 {
 
 		const _out = !! out && out.isVector3 ? out : new THREE.Vector3() as _THREE.Vector3;
-		return _out.copy( this._targetEnd );
+		return _out.copy( receiveEndValue ? this._targetEnd : this._target );
 
 	}
 
 	/**
-	 * Returns its current position.
-	 * @param out current position
+	 * Returns the camera position.
+	 * @param out The receiving Vector3 instance to copy the result
+	 * @param receiveEndValue Whether receive the transition end coords or current. default is `true`
 	 * @category Methods
 	 */
-	getPosition( out: _THREE.Vector3 ): _THREE.Vector3 {
+	getPosition( out: _THREE.Vector3, receiveEndValue: boolean = true ): _THREE.Vector3 {
 
 		const _out = !! out && out.isVector3 ? out : new THREE.Vector3() as _THREE.Vector3;
-		return _out.setFromSpherical( this._sphericalEnd ).applyQuaternion( this._yAxisUpSpaceInverse ).add( this._targetEnd );
+		return _out.setFromSpherical( receiveEndValue ? this._sphericalEnd : this._spherical ).applyQuaternion( this._yAxisUpSpaceInverse ).add( receiveEndValue ? this._targetEnd : this._target );
 
 	}
 
 	/**
-	 * Returns its current focal offset, which is how much the camera appears to be translated in screen parallel coordinates.
-	 * @param out current focal offset
+	 * Returns the spherical coordinates of the orbit.
+	 * @param out The receiving Spherical instance to copy the result
+	 * @param receiveEndValue Whether receive the transition end coords or current. default is `true`
 	 * @category Methods
 	 */
-	getFocalOffset( out: _THREE.Vector3 ): _THREE.Vector3 {
+	getSpherical( out: _THREE.Spherical, receiveEndValue: boolean = true ): _THREE.Spherical {
+
+		const _out = !! out && out instanceof THREE.Spherical ? out : new THREE.Spherical() as _THREE.Spherical;
+		return _out.copy( receiveEndValue ? this._sphericalEnd : this._spherical );
+
+	}
+
+	/**
+	 * Returns the focal offset, which is how much the camera appears to be translated in screen parallel coordinates.
+	 * @param out The receiving Vector3 instance to copy the result
+	 * @param receiveEndValue Whether receive the transition end coords or current. default is `true`
+	 * @category Methods
+	 */
+	getFocalOffset( out: _THREE.Vector3, receiveEndValue: boolean = true ): _THREE.Vector3 {
 
 		const _out = !! out && out.isVector3 ? out : new THREE.Vector3() as _THREE.Vector3;
-		return _out.copy( this._focalOffsetEnd );
+		return _out.copy( receiveEndValue ? this._focalOffsetEnd : this._focalOffset );
 
 	}
 
@@ -2500,10 +2642,10 @@ export class CameraControls extends EventDispatcher {
 
 		// So first find the vector off to the side, orthogonal to both this.object.up and
 		// the "view" vector.
-		const side = _v3B.crossVectors( cameraDirection, this._camera.up ).normalize();
+		const side = _v3B.crossVectors( cameraDirection, this._camera.up );
 		// Then find the vector orthogonal to both this "side" vector and the "view" vector.
 		// This vector will be the new "up" vector.
-		this._camera.up.crossVectors( side, cameraDirection ).normalize();
+		this._camera.up.crossVectors( side, cameraDirection );
 		this._camera.updateMatrixWorld();
 
 		const position = this.getPosition( _v3A );
@@ -2599,77 +2741,6 @@ export class CameraControls extends EventDispatcher {
 
 		}
 
-		if (
-			this.dollyToCursor &&
-			! approxZero( this._dollyControlCoord.x ) &&
-			! approxZero( this._dollyControlCoord.y )
-		) {
-
-			if ( isPerspectiveCamera( this._camera )  ) {
-
-				const dollyControlAmount = this._spherical.radius - this._lastDistance;
-
-				if ( dollyControlAmount !== 0 ) {
-
-					const camera = this._camera;
-					const cameraDirection = _v3A.setFromSpherical( this._spherical ).applyQuaternion( this._yAxisUpSpaceInverse ).normalize().negate();
-					const planeX = _v3B.copy( cameraDirection ).cross( camera.up ).normalize();
-					if ( planeX.lengthSq() === 0 ) planeX.x = 1.0;
-					const planeY = _v3C.crossVectors( planeX, cameraDirection );
-					const worldToScreen = this._sphericalEnd.radius * Math.tan( camera.getEffectiveFOV() * DEG2RAD * 0.5 );
-					const prevRadius = this._sphericalEnd.radius - dollyControlAmount;
-					const lerpRatio = ( prevRadius - this._sphericalEnd.radius ) / this._sphericalEnd.radius;
-					const cursor = _v3A.copy( this._targetEnd )
-						.add( planeX.multiplyScalar( this._dollyControlCoord.x * worldToScreen * camera.aspect ) )
-						.add( planeY.multiplyScalar( this._dollyControlCoord.y * worldToScreen ) );
-					this._targetEnd.lerp( cursor, lerpRatio );
-
-					this._target.copy( this._targetEnd );
-					// target position may be moved beyond boundary.
-					this._boundary.clampPoint( this._targetEnd, this._targetEnd );
-
-				}
-
-			} else if ( isOrthographicCamera( this._camera ) ) {
-
-				const dollyControlAmount = this._zoom - this._lastZoom;
-
-				if ( dollyControlAmount !== 0 ) {
-
-					const camera = this._camera;
-					const worldCursorPosition = _v3A.set(
-						this._dollyControlCoord.x,
-						this._dollyControlCoord.y,
-						( camera.near + camera.far ) / ( camera.near - camera.far )
-					).unproject( camera );//.sub( _v3B.set( this._focalOffset.x, this._focalOffset.y, 0 ) );
-					const quaternion = _v3B.set( 0, 0, - 1 ).applyQuaternion( camera.quaternion );
-					const cursor = _v3C.copy( worldCursorPosition ).add( quaternion.multiplyScalar( - worldCursorPosition.dot( camera.up ) ) );
-					const prevZoom = this._zoom - dollyControlAmount;
-					const lerpRatio = - ( prevZoom - this._zoomEnd ) / this._zoom;
-
-					// find the "distance" (aka plane constant in three.js) of Plane
-					// from a given position (this._targetEnd) and normal vector (cameraDirection)
-					// https://www.maplesoft.com/support/help/maple/view.aspx?path=MathApps%2FEquationOfAPlaneNormal#bkmrk0
-					const cameraDirection = _v3A.setFromSpherical( this._spherical ).applyQuaternion( this._yAxisUpSpaceInverse ).normalize().negate();
-					const prevPlaneConstant = this._targetEnd.dot( cameraDirection );
-
-					this._targetEnd.lerp( cursor, lerpRatio );
-					const newPlaneConstant = this._targetEnd.dot( cameraDirection );
-
-					// Pull back the camera depth that has moved, to be the camera stationary as zoom
-					const pullBack = cameraDirection.multiplyScalar( newPlaneConstant - prevPlaneConstant );
-					this._targetEnd.sub( pullBack );
-
-					this._target.copy( this._targetEnd );
-					// target position may be moved beyond boundary.
-					this._boundary.clampPoint( this._targetEnd, this._targetEnd );
-
-				}
-
-			}
-
-		}
-
 		// update zoom
 		if ( approxZero( deltaZoom ) ) {
 
@@ -2680,6 +2751,89 @@ export class CameraControls extends EventDispatcher {
 
 			const smoothTime = this._isUserControllingZoom ? this.draggingSmoothTime : this.smoothTime;
 			this._zoom = smoothDamp( this._zoom, this._zoomEnd, this._zoomVelocity, smoothTime, Infinity, delta );
+
+		}
+
+		if ( this.dollyToCursor ) {
+
+			if ( isPerspectiveCamera( this._camera ) && this._changedDolly !== 0 ) {
+
+				const dollyControlAmount = this._spherical.radius - this._lastDistance;
+
+				const camera = this._camera;
+				const cameraDirection = this._getCameraDirection( _cameraDirection );
+				const planeX = _v3A.copy( cameraDirection ).cross( camera.up ).normalize();
+				if ( planeX.lengthSq() === 0 ) planeX.x = 1.0;
+				const planeY = _v3B.crossVectors( planeX, cameraDirection );
+				const worldToScreen = this._sphericalEnd.radius * Math.tan( camera.getEffectiveFOV() * DEG2RAD * 0.5 );
+				const prevRadius = this._sphericalEnd.radius - dollyControlAmount;
+				const lerpRatio = ( prevRadius - this._sphericalEnd.radius ) / this._sphericalEnd.radius;
+				const cursor = _v3C.copy( this._targetEnd )
+					.add( planeX.multiplyScalar( this._dollyControlCoord.x * worldToScreen * camera.aspect ) )
+					.add( planeY.multiplyScalar( this._dollyControlCoord.y * worldToScreen ) );
+				const newTargetEnd = _v3A.copy( this._targetEnd ).lerp( cursor, lerpRatio );
+
+				const isMin = this._lastDollyDirection === DOLLY_DIRECTION.IN && this._spherical.radius <= this.minDistance;
+				const isMax = this._lastDollyDirection === DOLLY_DIRECTION.OUT && this.maxDistance <= this._spherical.radius;
+
+				if ( this.infinityDolly && ( isMin || isMax ) ) {
+
+					this._sphericalEnd.radius -= dollyControlAmount;
+					this._spherical.radius -= dollyControlAmount;
+					const dollyAmount = _v3B.copy( cameraDirection ).multiplyScalar( - dollyControlAmount );
+					newTargetEnd.add( dollyAmount );
+
+				}
+
+				// target position may be moved beyond boundary.
+				this._boundary.clampPoint( newTargetEnd, newTargetEnd );
+				const targetEndDiff = _v3B.subVectors( newTargetEnd, this._targetEnd );
+				this._targetEnd.copy( newTargetEnd );
+				this._target.add( targetEndDiff );
+
+				this._changedDolly -= dollyControlAmount;
+				if ( approxZero( this._changedDolly ) ) this._changedDolly = 0;
+
+			} else if ( isOrthographicCamera( this._camera ) && this._changedZoom !== 0 ) {
+
+				const dollyControlAmount = this._zoom - this._lastZoom;
+
+				const camera = this._camera;
+				const worldCursorPosition = _v3A.set(
+					this._dollyControlCoord.x,
+					this._dollyControlCoord.y,
+					( camera.near + camera.far ) / ( camera.near - camera.far )
+				).unproject( camera );
+				const quaternion = _v3B.set( 0, 0, - 1 ).applyQuaternion( camera.quaternion );
+				const cursor = _v3C.copy( worldCursorPosition ).add( quaternion.multiplyScalar( - worldCursorPosition.dot( camera.up ) ) );
+				const prevZoom = this._zoom - dollyControlAmount;
+				const lerpRatio = - ( prevZoom - this._zoom ) / this._zoom;
+
+				// find the "distance" (aka plane constant in three.js) of Plane
+				// from a given position (this._targetEnd) and normal vector (cameraDirection)
+				// https://www.maplesoft.com/support/help/maple/view.aspx?path=MathApps%2FEquationOfAPlaneNormal#bkmrk0
+				const cameraDirection = this._getCameraDirection( _cameraDirection );
+				const prevPlaneConstant = this._targetEnd.dot( cameraDirection );
+
+				const newTargetEnd = _v3A.copy( this._targetEnd ).lerp( cursor, lerpRatio );
+				const newPlaneConstant = newTargetEnd.dot( cameraDirection );
+
+				// Pull back the camera depth that has moved, to be the camera stationary as zoom
+				const pullBack = cameraDirection.multiplyScalar( newPlaneConstant - prevPlaneConstant );
+				newTargetEnd.sub( pullBack );
+
+				// target position may be moved beyond boundary.
+				this._boundary.clampPoint( newTargetEnd, newTargetEnd );
+				const targetEndDiff = _v3B.subVectors( newTargetEnd, this._targetEnd );
+				this._targetEnd.copy( newTargetEnd );
+				this._target.add( targetEndDiff );
+
+				// this._target.copy( this._targetEnd );
+
+				this._changedZoom -= dollyControlAmount;
+				if ( approxZero( this._changedZoom ) ) this._changedZoom = 0;
+
+			}
 
 		}
 
@@ -2920,6 +3074,20 @@ export class CameraControls extends EventDispatcher {
 
 	}
 
+	// it's okay to expose public though
+	protected _getTargetDirection( out: _THREE.Vector3 ): _THREE.Vector3 {
+
+		// divide by distance to normalize, lighter than `Vector3.prototype.normalize()`
+		return out.setFromSpherical( this._spherical ).divideScalar( this._spherical.radius ).applyQuaternion( this._yAxisUpSpaceInverse );
+
+	}
+
+	// it's okay to expose public though
+	protected _getCameraDirection( out: _THREE.Vector3 ): _THREE.Vector3 {
+
+		return this._getTargetDirection( out ).negate();
+
+	}
 
 	protected _findPointerById( pointerId: number ): PointerInput | undefined {
 
@@ -3079,36 +3247,49 @@ export class CameraControls extends EventDispatcher {
 	protected _dollyInternal = ( delta: number, x: number, y : number ): void => {
 
 		const dollyScale = Math.pow( 0.95, - delta * this.dollySpeed );
+		const lastDistance = this._sphericalEnd.radius;
 		const distance = this._sphericalEnd.radius * dollyScale;
-		const prevRadius = this._sphericalEnd.radius;
+		const clampedDistance = THREE.MathUtils.clamp( distance, this.minDistance, this.maxDistance );
+		const overflowedDistance = clampedDistance - distance;
 
-		this.dollyTo( distance, true );
+		if ( this.infinityDolly && this.dollyToCursor ) {
 
-		if ( this._infinityDolly && ( distance < this.minDistance || this.maxDistance === this.minDistance ) ) {
+			this._dollyToNoClamp( distance, true );
 
-			const signedPrevRadius = prevRadius * ( delta >= 0 ? - 1 : 1 );
-			this._camera.getWorldDirection( _v3A );
-			this._targetEnd.add( _v3A.normalize().multiplyScalar( signedPrevRadius ) );
+		} else if ( this.infinityDolly && ! this.dollyToCursor ) {
+
+			this.dollyInFixed( overflowedDistance, true );
+			this._dollyToNoClamp( clampedDistance, true );
+
+		} else {
+
+			this._dollyToNoClamp( clampedDistance, true );
 
 		}
 
 		if ( this.dollyToCursor ) {
 
+			this._changedDolly += ( this.infinityDolly ? distance : clampedDistance ) - lastDistance;
 			this._dollyControlCoord.set( x, y );
 
 		}
+
+		this._lastDollyDirection = Math.sign( - delta ) as DOLLY_DIRECTION;
 
 	};
 
 	protected _zoomInternal = ( delta: number, x: number, y: number ): void => {
 
 		const zoomScale = Math.pow( 0.95, delta * this.dollySpeed );
+		const lastZoom = this._zoom;
+		const zoom = this._zoom * zoomScale;
 
 		// for both PerspectiveCamera and OrthographicCamera
-		this.zoomTo( this._zoom * zoomScale );
+		this.zoomTo( zoom, true );
 
 		if ( this.dollyToCursor ) {
 
+			this._changedZoom += zoom - lastZoom;
 			this._dollyControlCoord.set( x, y );
 
 		}
@@ -3125,10 +3306,8 @@ export class CameraControls extends EventDispatcher {
 
 		if ( notSupportedInOrthographicCamera( this._camera, '_collisionTest' ) ) return distance;
 
-		// divide by distance to normalize, lighter than `Vector3.prototype.normalize()`
-		const direction = _v3A.setFromSpherical( this._spherical ).divideScalar( this._spherical.radius );
-
-		_rotationMatrix.lookAt( _ORIGIN, direction, this._camera.up );
+		const rayDirection = this._getTargetDirection( _cameraDirection );
+		_rotationMatrix.lookAt( _ORIGIN, rayDirection, this._camera.up );
 
 		for ( let i = 0; i < 4; i ++ ) {
 
@@ -3136,7 +3315,7 @@ export class CameraControls extends EventDispatcher {
 			nearPlaneCorner.applyMatrix4( _rotationMatrix );
 
 			const origin = _v3C.addVectors( this._target, nearPlaneCorner );
-			_raycaster.set( origin, direction );
+			_raycaster.set( origin, rayDirection );
 			_raycaster.far = this._spherical.radius + 1;
 
 			const intersects = _raycaster.intersectObjects( this.colliderMeshes );
@@ -3253,28 +3432,6 @@ export class CameraControls extends EventDispatcher {
 	set draggingDampingFactor( _: number ) {
 
 		console.warn( '.draggingDampingFactor has been deprecated. use draggingSmoothTime (in seconds) instead.' );
-
-	}
-
-	/**
-	 * @deprecated infinityDolly will be removed in the next major release. use .forward() alternatively
-	 * @category Properties
-	 */
-	set infinityDolly( infinityDolly: boolean ) {
-
-		console.warn( '.infinityDolly will be removed. use .forward() alternatively' );
-		this._infinityDolly = infinityDolly;
-
-	}
-
-	/**
-	 * @deprecated infinityDolly will be removed in the next major release. use .forward() alternatively
-	 * @category Properties
-	 */
-	get infinityDolly() {
-
-		console.warn( '.infinityDolly will be removed. use .forward() alternatively' );
-		return this._infinityDolly;
 
 	}
 

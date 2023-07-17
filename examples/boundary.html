@@ -18,6 +18,8 @@
 	<label><input type="checkbox" onchange="cameraControls.boundaryEnclosesCamera = this.checked">Enclose also the camera into the boundary</label>
 	<br>
 	<br>
+	<label><input type="checkbox" onchange="cameraControls.infinityDolly = this.checked">infinity dolly</label>
+	<br>
 	<label><input type="checkbox" onchange="cameraControls.verticalDragToForward = this.checked">vertical drag to move forward</label>
 	<br>
 	<button type="button" onclick="cameraControls.truck( -1, 0, true)">truck( -1, 0 )</button>
@@ -28,12 +30,12 @@
 	<button type="button" onclick="cameraControls.reset( true )">reset</button>
 </div>
 
-<script async src="https://unpkg.com/es-module-shims@1.7.1/dist/es-module-shims.js"></script>
+<script async src="https://unpkg.com/es-module-shims@1.7.3/dist/es-module-shims.js"></script>
 <script type="importmap">
 {
 	"imports": {
-		"three": "https://unpkg.com/three@0.151.2/build/three.module.js",
-		"three/addons/": "https://unpkg.com/three@0.151.2/examples/jsm/"
+		"three": "https://unpkg.com/three@0.153.0/build/three.module.js",
+		"three/addons/": "https://unpkg.com/three@0.153.0/examples/jsm/"
 	}
 }
 </script>
@@ -68,7 +70,7 @@ scene.add( bbHelper );
 bbHelper.visible = false;
 
 const centerHelper = new THREE.Mesh(
-	new THREE.SphereGeometry( .05, .05, .05 ),
+	new THREE.SphereGeometry( .05 ),
 	new THREE.MeshBasicMaterial( { color: 0xffff00 } )
 )
 scene.add( centerHelper );
