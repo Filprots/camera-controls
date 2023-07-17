@@ -144,8 +144,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Minimum vertical angle in radians.  
-	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.  
+	 * Minimum vertical angle in radians.
+	 * The angle has to be between `0` and `.maxPolarAngle` inclusive.
 	 * The default value is `0`.
 	 *
 	 * e.g.
@@ -157,8 +157,8 @@ export class CameraControls extends EventDispatcher {
 	minPolarAngle = 0; // radians
 
 	/**
-	 * Maximum vertical angle in radians.  
-	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.  
+	 * Maximum vertical angle in radians.
+	 * The angle has to be between `.maxPolarAngle` and `Math.PI` inclusive.
 	 * The default value is `Math.PI`.
 	 *
 	 * e.g.
@@ -170,8 +170,8 @@ export class CameraControls extends EventDispatcher {
 	maxPolarAngle = Math.PI; // radians
 
 	/**
-	 * Minimum horizontal angle in radians.  
-	 * The angle has to be less than `.maxAzimuthAngle`.  
+	 * Minimum horizontal angle in radians.
+	 * The angle has to be less than `.maxAzimuthAngle`.
 	 * The default value is `- Infinity`.
 	 *
 	 * e.g.
@@ -183,8 +183,8 @@ export class CameraControls extends EventDispatcher {
 	minAzimuthAngle = - Infinity; // radians
 
 	/**
-	 * Maximum horizontal angle in radians.  
-	 * The angle has to be greater than `.minAzimuthAngle`.  
+	 * Maximum horizontal angle in radians.
+	 * The angle has to be greater than `.minAzimuthAngle`.
 	 * The default value is `Infinity`.
 	 *
 	 * e.g.
@@ -211,7 +211,7 @@ export class CameraControls extends EventDispatcher {
 	maxDistance = Infinity;
 
 	/**
-	 * `true` to enable Infinity Dolly for wheel and pinch. Use this with `minDistance` and `maxDistance`  
+	 * `true` to enable Infinity Dolly for wheel and pinch. Use this with `minDistance` and `maxDistance`
 	 * If the Dolly distance is less (or over) than the `minDistance` (or `maxDistance`), `infinityDolly` will keep the distance and pushes the target position instead.
 	 * @category Properties
 	 */
@@ -305,7 +305,7 @@ export class CameraControls extends EventDispatcher {
 	restThreshold = 0.01;
 
 	/**
-	 * An array of Meshes to collide with camera.  
+	 * An array of Meshes to collide with camera.
 	 * Be aware colliderMeshes may decrease performance. The collision test uses 4 raycasters from the camera since the near plane has 4 corners.
 	 * @category Properties
 	 */
@@ -1555,8 +1555,8 @@ export class CameraControls extends EventDispatcher {
 	}
 
 	/**
-	 * Set drag-start, touches and wheel enable area in the domElement.  
-	 * each values are between `0` and `1` inclusive, where `0` is left/top and `1` is right/bottom of the screen.  
+	 * Set drag-start, touches and wheel enable area in the domElement.
+	 * each values are between `0` and `1` inclusive, where `0` is left/top and `1` is right/bottom of the screen.
 	 * e.g. `{ x: 0, y: 0, width: 1, height: 1 }` for entire area.
 	 * @category Properties
 	 */
@@ -1838,11 +1838,12 @@ export class CameraControls extends EventDispatcher {
 	 * Limits set with `.minZoom` and `.maxZoom`
 	 * @param zoomStep zoom scale
 	 * @param enableTransition Whether to move smoothly or immediately
+     * @param silent
 	 * @category Methods
 	 */
-	zoom( zoomStep: number, enableTransition: boolean = false ): Promise<void> {
+	zoom( zoomStep: number, enableTransition: boolean = false, silent: boolean = false ): Promise<void> {
 
-		return this.zoomTo( this._zoomEnd + zoomStep, enableTransition );
+		return this.zoomTo( this._zoomEnd + zoomStep, enableTransition, silent );
 
 	}
 
@@ -1955,9 +1956,10 @@ export class CameraControls extends EventDispatcher {
 	 * @param y y coord to move center position
 	 * @param z z coord to move center position
 	 * @param enableTransition Whether to move smoothly or immediately
+     * @param silent
 	 * @category Methods
 	 */
-	moveTo( x: number, y: number, z: number, enableTransition: boolean = false ): Promise<void> {
+	moveTo( x: number, y: number, z: number, enableTransition: boolean = false, silent: boolean = false ): Promise<void> {
 
 		this._isUserControllingTruck = false;
 
@@ -1969,6 +1971,14 @@ export class CameraControls extends EventDispatcher {
 		if ( ! enableTransition ) {
 
 			this._target.copy( this._targetEnd );
+
+		}
+
+		// Instant and silent
+		if ( silent ) {
+
+			this.update( 1, true );
+			return Promise.resolve();
 
 		}
 
